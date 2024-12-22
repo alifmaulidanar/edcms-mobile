@@ -1,3 +1,4 @@
+import { Profile } from '../types';
 import Radar from 'react-native-radar';
 import supabase from '../utils/supabase';
 
@@ -16,9 +17,9 @@ export const login = async (email: string, password: string) => {
   Radar.setUserId(userId);
   Radar.setMetadata(userData)
   Radar.setDescription(`${userData.username} - ${userData.email} - ${userData.phone}`);
-  console.log('Radar initialized with user ID:', userId);
-  console.log('User metadata:', userData);
-  console.log('User description:', `${userData.username} - ${userData.email} - ${userData.phone}`);
+  // console.log('Radar initialized with user ID:', userId);
+  // console.log('User metadata:', userData);
+  // console.log('User description:', `${userData.username} - ${userData.email} - ${userData.phone}`);
 
   return userData;
 };
@@ -32,6 +33,31 @@ export const getUserData = async (userId: string) => {
     .single();
   if (error) throw error;
   return data;
+};
+
+// Get Profile data
+export const getProfile = async (user_id: string): Promise<Profile> => {
+  try {
+    const response = await fetch("https://live-tracking-backend.alifmaulidanr.workers.dev/profile", {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "user_id": user_id,
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      console.error("Error fetching user profile:", data.message || "Unknown error");
+      throw new Error(data.message || "Unknown error");
+    }
+
+    const data = await response.json();
+    return data as Profile;
+  } catch (error) {
+    console.error("Error:", error);
+    throw error;
+  }
 };
 
 // Logout
