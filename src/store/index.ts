@@ -3,6 +3,7 @@ import { createSlice, configureStore } from '@reduxjs/toolkit';
 // User data type
 interface UserData {
   id: number;
+  user_id: string;
   email: string;
   username: string;
   role: string;
