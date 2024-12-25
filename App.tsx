@@ -5,10 +5,10 @@ import { Provider } from "react-redux";
 import { StatusBar } from "react-native";
 import { initializeRadar } from "./src/utils/radar";
 import LoginScreen from "./src/screens/LoginScreen";
+import TabsNavigator from "./src/navigation/TabsNavigator";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import TabsNavigator from "./src/navigation/TabsNavigator"; // Import TabsNavigator
 
 // Stack navigator
 const Stack = createStackNavigator();
@@ -35,7 +35,17 @@ export default function App() {
             />
             <Stack.Screen
               name="Main"
-              component={TabsNavigator} // Use TabsNavigator here
+              component={TabsNavigator}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Tickets"
+              component={TabsNavigator}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={TabsNavigator}
               options={{ headerShown: false }}
             />
           </Stack.Navigator>
