@@ -1,4 +1,5 @@
 import { createSlice, configureStore } from '@reduxjs/toolkit';
+// import { Geofence } from '../types';
 
 // User data type
 interface UserData {
@@ -20,12 +21,26 @@ const userSlice = createSlice({
   },
 });
 
+// Geofence slice
+// const geofenceSlice = createSlice({
+//   name: 'geofence',
+//   initialState: [] as Geofence[],
+//   reducers: {
+//     setGeofence: (state, action) => action.payload,
+//     clearGeofence: () => [],
+//   },
+// });
+
 // Action creators
 export const { setUser, clearUser } = userSlice.actions;
+// export const { setGeofence, clearGeofence } = geofenceSlice.actions;
 
 // Redux store configuration
 const store = configureStore({
-  reducer: { user: userSlice.reducer },
+  reducer: {
+    user: userSlice.reducer,
+    // geofence: geofenceSlice.reducer
+  },
 });
 
 // Root state type
