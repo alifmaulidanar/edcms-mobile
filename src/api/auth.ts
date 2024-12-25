@@ -38,7 +38,7 @@ export const getUserData = async (userId: string) => {
 // Get Profile data
 export const getProfile = async (user_id: string): Promise<Profile> => {
   try {
-    const response = await fetch("https://live-tracking-backend.alifmaulidanr.workers.dev/profile", {
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL as string}/profile`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
