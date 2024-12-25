@@ -1,23 +1,22 @@
-import { logout } from "../api/auth";
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
 import LottieView from 'lottie-react-native';
 import React, { useState, useEffect } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { View, Alert, Text, Button, Modal, TouchableOpacity } from "react-native";
+import { View, Alert, Text, Modal, TouchableOpacity } from "react-native";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 
 type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  Tickets: undefined;
+  Profile: undefined;
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, "Main">;
 
 const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [tracking, setTracking] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [profileVisible, setProfileVisible] = useState(false);
   const [time, setTime] = useState(0);  // To store the time in seconds
 
   // Ambil user data dari Redux store
@@ -44,21 +43,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     cancelTrip();  // Cancel Radar trip tracking
     setTracking(false);
   };
-
-  // Handle Logout
-  const handleLogout = async () => {
-    await logout();
-    hideDialog();
-    navigation.navigate("Login");
-  };
-
-  // Show Dialog for Logout confirmation
-  const showDialog = () => setVisible(true);
-  const hideDialog = () => setVisible(false);
-
-  // Show Profile Modal
-  const showProfile = () => setProfileVisible(true);
-  const hideProfile = () => setProfileVisible(false);
 
   // Stopwatch effect
   useEffect(() => {
@@ -97,11 +81,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             {userData?.username || "User"}
           </Text>
         </View>
-
-        {/* Logout Button */}
-        <TouchableOpacity onPress={showDialog} className="flex-row items-center">
-          <Text className="px-4 py-2 font-semibold text-white bg-red-500 rounded-full">Logout</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Profile Card */}
@@ -199,58 +178,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
         )}
       </View>
-
-      {/* Logout Confirmation Modal */}
-      {visible && (
-        <Modal
-          animationType="slide"
-          transparent={true}
-          visible={visible}
-          onRequestClose={hideDialog}
-        >
-          <View className="items-center justify-center flex-1 bg-black bg-opacity-50">
-            <View className="p-6 bg-white rounded-lg w-80">
-              <Text className="mb-4 text-xl text-center">Konfirmasi Logout</Text>
-              <Text className="mb-6 text-center">Apakah yakin ingin logout?</Text>
-              <View className="flex-row justify-between">
-                <TouchableOpacity
-                  onPress={hideDialog}
-                  className="px-4 py-2 bg-gray-500 rounded"
-                >
-                  <Text className="text-white">Batal</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleLogout}
-                  className="px-4 py-2 bg-red-500 rounded"
-                >
-                  <Text className="text-white">Logout</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Profile Modal */}
-      {profileVisible && (
-        <Modal
-          animationType="fade"
-          transparent={true}
-          visible={profileVisible}
-          onRequestClose={hideProfile}
-        >
-          <View className="items-center justify-center flex-1 bg-black bg-opacity-50">
-            <View className="p-6 bg-white rounded-lg w-80">
-              <Text className="mb-4 text-xl text-center">Profile</Text>
-              <Text className="text-center">{userData?.username}</Text>
-              <Text className="text-center">{userData?.email}</Text>
-              <TouchableOpacity onPress={hideProfile} className="px-4 py-2 mt-4 bg-blue-500 rounded-full">
-                <Text className="text-center text-white">Tutup</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
     </View>
   );
 };
