@@ -33,46 +33,46 @@ const startBackgroundTracking = async (preset: 'EFFICIENT' | 'RESPONSIVE' | 'CON
   await requestLocationPermissions();
 
   // Set default trip options
-  // const defaultTripOptions: any = {
-  //   externalId: '0193e9e3-7243-7610-8566-119a522a6b79',
-  //   destinationGeofenceTag: 'jalan-raya',
-  //   destinationGeofenceExternalId: '0193e9e3-1ae3-7efc-b981-e4c3311c7f85',
-  //   mode: 'bike',
-  //   approachingThreshold: 1,
-  // }
+  const defaultTripOptions: any = {
+    externalId: '0193e9e3-7243-7610-8566-119a522a6b79',
+    destinationGeofenceTag: 'jalan-raya',
+    destinationGeofenceExternalId: '0193e9e3-1ae3-7efc-b981-e4c3311c7f85',
+    mode: 'bike',
+    approachingThreshold: 1,
+  }
 
   // Set default tracking options
-  // const defaultTrackingOptions: any = {
-  //   desiredStoppedUpdateInterval: 30,
-  //   fastestStoppedUpdateInterval: 30,
-  //   desiredMovingUpdateInterval: 30,
-  //   fastestMovingUpdateInterval: 30,
-  //   desiredSyncInterval: 20,
-  //   desiredAccuracy: "high",
-  //   stopDuration: 0,
-  //   stopDistance: 0,
-  //   startTrackingAfter: null,
-  //   stopTrackingAfter: null,
-  //   replay: "all",
-  //   sync: "all",
-  //   useStoppedGeofence: false,
-  //   stoppedGeofenceRadius: 0,
-  //   useMovingGeofence: false,
-  //   movingGeofenceRadius: 0,
-  //   syncGeofences: false,
-  //   syncGeofencesLimit: 0,
-  //   foregroundServiceEnabled: true,
-  //   beacons: false,
-  // }
+  const defaultTrackingOptions: any = {
+    desiredStoppedUpdateInterval: 30,
+    fastestStoppedUpdateInterval: 30,
+    desiredMovingUpdateInterval: 30,
+    fastestMovingUpdateInterval: 30,
+    desiredSyncInterval: 20,
+    desiredAccuracy: "high",
+    stopDuration: 0,
+    stopDistance: 0,
+    startTrackingAfter: null,
+    stopTrackingAfter: null,
+    replay: "all",
+    sync: "all",
+    useStoppedGeofence: false,
+    stoppedGeofenceRadius: 0,
+    useMovingGeofence: false,
+    movingGeofenceRadius: 0,
+    syncGeofences: false,
+    syncGeofencesLimit: 0,
+    foregroundServiceEnabled: true,
+    beacons: false,
+  }
 
   // Start trip
-  // Radar.startTrip({
-  //   tripOptions: defaultTripOptions,
-  //   trackingOptions: defaultTrackingOptions
-  // }).then((result) => {
-  //   console.log('Trip started:', result);
-  // });
-  // console.log('Trip started...');
+  Radar.startTrip({
+    tripOptions: defaultTripOptions,
+    trackingOptions: defaultTrackingOptions
+  }).then((result) => {
+    console.log('Trip started:', result);
+  });
+  console.log('Trip started...');
 
   // Track location once in foreground
   trackLocationOnce();
@@ -82,20 +82,20 @@ const startBackgroundTracking = async (preset: 'EFFICIENT' | 'RESPONSIVE' | 'CON
   // Start trip/background tracking with preset (without trip and tracking options)
   // -> this is bad if you wanna configure many things like destination, externalId, mode, etc.
   // if we use this preset, we don't need to startTrip and updateTrip manually
-  console.log('Starting background tracking with preset:', preset);
-  switch (preset) {
-    case 'EFFICIENT':
-      Radar.startTrackingEfficient();
-      break;
-    case 'RESPONSIVE':
-      Radar.startTrackingResponsive();
-      break;
-    case 'CONTINUOUS':
-      Radar.startTrackingContinuous();
-      break;
-    default:
-      console.error('Invalid preset for background tracking.');
-  }
+  // console.log('Starting background tracking with preset:', preset);
+  // switch (preset) {
+  //   case 'EFFICIENT':
+  //     Radar.startTrackingEfficient();
+  //     break;
+  //   case 'RESPONSIVE':
+  //     Radar.startTrackingResponsive();
+  //     break;
+  //   case 'CONTINUOUS':
+  //     Radar.startTrackingContinuous();
+  //     break;
+  //   default:
+  //     console.error('Invalid preset for background tracking.');
+  // }
 
   // // Start custom background tracking
   // Radar.mockTracking({
@@ -123,19 +123,19 @@ const startBackgroundTracking = async (preset: 'EFFICIENT' | 'RESPONSIVE' | 'CON
   // 7. testing di device asli, defined konfigurasi, geofence tujuan asli, dan tracking asli
 
   // Update trip (seharusnya tidak perlu manual, tapi otomatis)
-  // Radar.updateTrip({
-  //   status: 'started',
-  //   options: {
-  //     externalId: '0193e9e3-7243-7610-8566-119a522a6b79',
-  //     mode: 'bike',
-  //     destinationGeofenceTag: 'jalan-raya',
-  //     destinationGeofenceExternalId: '0193e9e3-1ae3-7efc-b981-e4c3311c7f85',
-  //     approachingThreshold: 1,
-  //   },
-  // }).then((result) => {
-  //   console.log('Trip updated:', result);
-  // });
-  // console.log('Trip updated...');
+  Radar.updateTrip({
+    status: 'started',
+    options: {
+      externalId: '0193e9e3-7243-7610-8566-119a522a6b79',
+      mode: 'bike',
+      destinationGeofenceTag: 'jalan-raya',
+      destinationGeofenceExternalId: '0193e9e3-1ae3-7efc-b981-e4c3311c7f85',
+      approachingThreshold: 1,
+    },
+  }).then((result) => {
+    console.log('Trip updated:', result);
+  });
+  console.log('Trip updated...');
 
   // Set foreground service options
   // Radar.setForegroundServiceOptions({
