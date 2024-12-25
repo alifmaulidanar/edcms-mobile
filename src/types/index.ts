@@ -25,3 +25,30 @@ export interface Profile {
   created_at: string;
   updated_at: string;
 }
+
+export interface Ticket {
+  id: string;
+  ticket_id: string;
+  trip_id: string;
+  user_id: string;
+  geofence_id: string;
+  description: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Geofence {
+  id: string;
+  radar_id: string;
+  external_id: string;
+  description: string;
+  tag: string;
+  type: string;
+  radius: number;
+  coordinates: [number, number];
+  status: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
