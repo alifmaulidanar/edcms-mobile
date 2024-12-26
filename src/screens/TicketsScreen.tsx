@@ -6,7 +6,8 @@ import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { getAllGeofences } from "../api/geofences";
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl } from "react-native";
+import { TabView, SceneMap, TabBar } from "react-native-tab-view";
+import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions } from "react-native";
 
 const copyToClipboard = (text: string) => {
   Clipboard.setStringAsync(text);
@@ -34,6 +35,11 @@ const TicketsScreen = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const userData = useSelector((state: RootState) => state.user);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [index, setIndex] = useState(0);
+  const [routes] = useState([
+    { key: "active", title: "Aktif" },
+    { key: "history", title: "Riwayat" },
+  ]);
 
   // Fetch tickets dari API
   const fetchTickets = useCallback(async () => {
@@ -75,81 +81,146 @@ const TicketsScreen = () => {
     setIsModalVisible(true);
   };
 
-  return (
-    <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 16 }}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-        }
-      >
-        <Text className="px-6 py-4 text-2xl font-semibold text-gray-700">
-          Tiket Saya
-        </Text>
+  // Filter Tickets for Tabs
+  const activeTickets = tickets.filter(
+    (ticket) => ticket.status === "assigned" || ticket.status === "on_progress"
+  );
 
-        {tickets.length > 0 ? (
-          tickets.map((ticket, index) => (
-            <TouchableOpacity
-              key={ticket.ticket_id}
-              className={`bg-white rounded-lg p-4 mx-6 mb-4 shadow-md 
-              ${ticket.status === "assigned"
-                  ? "border-l-4 border-blue-600"
-                  : ticket.status === "on_progress"
-                    ? "border-l-4 border-yellow-600"
-                    : ticket.status === "finished"
-                      ? "border-l-4 border-green-600"
-                      : "border-l-4 border-red-600"
-                }`}
-              activeOpacity={0.9}
-              onPress={() => handleTicketPress(ticket)}
-            >
-              <View className="flex-row items-center mb-2">
-                <Ionicons
-                  name="ticket-outline"
-                  size={24}
-                  color="#4F46E5"
-                />
-                <View className="flex-1 gap-y-2">
-                  <Text className="flex-1 ml-2 text-base font-medium text-gray-800">
-                    {ticket.description}
-                  </Text>
-                  <Text className="flex-1 ml-2 text-sm font-medium text-gray-800">
-                    {geofence.find((g) => g.external_id === ticket.geofence_id)?.description}
-                  </Text>
-                </View>
-                <Text
-                  className={`text-xs font-semibold px-2 py-1 rounded ${ticket.status === "assigned"
-                    ? "bg-blue-100 text-blue-600"
-                    : ticket.status === "on_progress"
-                      ? "bg-yellow-100 text-yellow-600"
-                      : ticket.status === "finished"
-                        ? "bg-green-100 text-green-600"
-                        : "bg-red-100 text-red-600"
-                    }`}
-                >
-                  {ticket.status === "assigned"
-                    ? "Ditugaskan"
-                    : ticket.status === "on_progress"
-                      ? "Berjalan"
-                      : ticket.status === "finished"
-                        ? "Selesai"
-                        : "Dibatalkan"}
-                </Text>
-              </View>
-              <Text className="text-xs text-gray-400">
-                Dibuat: {new Date(ticket.created_at).toLocaleString("id-ID")}
+  const historyTickets = tickets.filter(
+    (ticket) => ticket.status === "finished" || ticket.status === "canceled"
+  );
+
+  const TicketsList = ({ tickets, geofence, onRefresh, isRefreshing, handleTicketPress }: any) => (
+    <ScrollView
+      contentContainerStyle={{ paddingBottom: 16 }}
+      refreshControl={
+        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+      }
+    >
+      {tickets.map((ticket: any) => (
+        <TouchableOpacity
+          key={ticket.ticket_id}
+          className={`bg-white rounded-lg mt-4 p-4 mx-6 mb-4 shadow-md ${ticket.status === "assigned"
+            ? "border-l-4 border-blue-600"
+            : ticket.status === "on_progress"
+              ? "border-l-4 border-yellow-600"
+              : ticket.status === "finished"
+                ? "border-l-4 border-green-600"
+                : "border-l-4 border-red-600"
+            }`}
+          activeOpacity={0.9}
+          onPress={() => handleTicketPress(ticket)}
+        >
+          <View className="flex-row items-center mb-2">
+            <Ionicons name="ticket-outline" size={24} color="#4F46E5" />
+            <View className="flex-1 ml-2">
+              <Text className="ml-2 text-base font-medium text-gray-800">
+                {ticket.description}
               </Text>
-            </TouchableOpacity>
-          ))
-        ) : (
-          <View className="items-center justify-center flex-1 mt-12">
-            <Ionicons name="documents-outline" size={64} color="#D1D5DB" />
-            <Text className="mt-4 text-center text-gray-500">
-              Belum ada tiket untuk ditampilkan
+              <Text className="flex-1 ml-2 text-sm font-medium text-gray-800">
+                {geofence.find((g: any) => g.external_id === ticket.geofence_id)?.description}
+              </Text>
+            </View>
+            <Text
+              className={`text-xs font-semibold px-2 py-1 rounded ${ticket.status === "assigned"
+                ? "bg-blue-100 text-blue-600"
+                : ticket.status === "on_progress"
+                  ? "bg-yellow-100 text-yellow-600"
+                  : ticket.status === "finished"
+                    ? "bg-green-100 text-green-600"
+                    : "bg-red-100 text-red-600"
+                }`}
+            >
+              {ticket.status === "assigned"
+                ? "Ditugaskan"
+                : ticket.status === "on_progress"
+                  ? "Berjalan"
+                  : ticket.status === "finished"
+                    ? "Selesai"
+                    : "Dibatalkan"}
             </Text>
           </View>
+          <Text className="text-xs text-gray-400">
+            Dibuat: {new Date(ticket.created_at).toLocaleString("id-ID")}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
+
+  // Tab Scenes
+  const ActiveTab = () => (
+    <TicketsList
+      tickets={activeTickets}
+      geofence={geofence}
+      onRefresh={onRefresh}
+      isRefreshing={isRefreshing}
+      handleTicketPress={handleTicketPress}
+    />
+  );
+
+  const HistoryTab = () => (
+    <TicketsList
+      tickets={historyTickets}
+      geofence={geofence}
+      onRefresh={onRefresh}
+      isRefreshing={isRefreshing}
+      handleTicketPress={handleTicketPress}
+    />
+  );
+
+  // Handle CTA Button
+  // const toggleTicketStatus = async () => {
+  //   if (selectedTicket) {
+  //     const newStatus =
+  //       selectedTicket.status === "assigned" ? "on_progress" : "assigned";
+
+  //     try {
+  //       // await updateTicketStatus(selectedTicket.ticket_id, newStatus);
+  //       setTickets((prevTickets) =>
+  //         prevTickets.map((ticket) =>
+  //           ticket.ticket_id === selectedTicket.ticket_id
+  //             ? { ...ticket, status: newStatus }
+  //             : ticket
+  //         )
+  //       );
+  //       setSelectedTicket({ ...selectedTicket, status: newStatus });
+  //       alert(
+  //         newStatus === "on_progress"
+  //           ? "Tiket telah diaktifkan."
+  //           : "Tiket telah ditunda."
+  //       );
+  //     } catch (error) {
+  //       // console.error("Error updating ticket status:", error.message);
+  //       alert("Gagal mengubah status tiket.");
+  //     }
+  //   }
+  // };
+
+  return (
+    <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
+      <Text className="px-6 pt-4 text-2xl font-semibold text-gray-700">
+        Tiket Saya
+      </Text>
+      <TabView
+        navigationState={{ index, routes }}
+        renderScene={SceneMap({
+          active: ActiveTab,
+          history: HistoryTab,
+        })}
+        onIndexChange={setIndex}
+        initialLayout={{ width: Dimensions.get("window").width }}
+        renderTabBar={(props) => (
+          <TabBar
+            {...props}
+            indicatorStyle={{ backgroundColor: "#3B82F6", height: 3, borderRadius: 5 }}
+            style={{ backgroundColor: "#f5f5f5", shadowOpacity: 0.2 }}
+            labelStyle={{ color: "gray", fontWeight: "600" }}
+            activeColor="#3B82F6"
+            inactiveColor="#9CA3AF"
+          />
         )}
-      </ScrollView>
+      />
 
       {/* Modal */}
       <Modal
@@ -200,7 +271,7 @@ const TicketsScreen = () => {
                   </View>
                 </View>
 
-                {/* Nama Tempat */}
+                {/* Place Name */}
                 <View className="flex-row items-center justify-between mb-4">
                   <Text className="font-medium text-gray-500">Tempat:</Text>
                   <View className="flex-row items-center">
@@ -278,11 +349,28 @@ const TicketsScreen = () => {
               <Text className="text-gray-500">Memuat data tiket...</Text>
             )}
 
+            {/* CTA Button */}
+            {/* <Pressable
+              className={`items-center py-3 mb-4 rounded-lg ${selectedTicket?.status === "assigned"
+                ? "bg-blue-600"
+                : "bg-yellow-600"
+                }`}
+              onPress={toggleTicketStatus}
+            >
+              <Text className="font-medium text-white">
+                {selectedTicket?.status === "assigned"
+                  ? "Aktifkan"
+                  : "Tunda"}
+              </Text>
+            </Pressable> */}
+
             {/* Close Button */}
             <Pressable
-              className="items-center p-3 mt-6 bg-blue-500 rounded-lg"
+              // className="items-center p-3 mt-2 bg-white border border-blue-500 rounded-lg"
+              className="items-center p-3 mt-2 bg-blue-500 rounded-lg"
               onPress={() => setIsModalVisible(false)}
             >
+              {/* <Text className="font-medium text-blue-500">Tutup</Text> */}
               <Text className="font-medium text-white">Tutup</Text>
             </Pressable>
           </View>
