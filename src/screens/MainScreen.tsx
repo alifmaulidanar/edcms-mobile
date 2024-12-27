@@ -1,10 +1,14 @@
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
+import { getTickets } from '../api/tickets';
+import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
-import React, { useState, useEffect } from "react";
+import { getAllGeofences } from '../api/geofences';
+import { Picker } from '@react-native-picker/picker';
+import React, { useState, useEffect, useCallback } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { View, Alert, Text, Modal, TouchableOpacity } from "react-native";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
+import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
 
 type RootStackParamList = {
   Login: undefined;
@@ -18,14 +22,66 @@ type Props = NativeStackScreenProps<RootStackParamList, "Main">;
 const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [tracking, setTracking] = useState(false);
   const [time, setTime] = useState(0);  // To store the time in seconds
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [geofence, setGeofence] = useState<Geofence[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Ambil user data dari Redux store
+  // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
+
+  // Fetch tickets dari API
+  const fetchTickets = useCallback(async () => {
+    try {
+      if (userData) {
+        const response = await getTickets(userData.user_id);
+        setTickets(response);
+      }
+    } catch (error: any) {
+      console.error("Error fetching tickets:", error.message);
+    }
+  }, [userData]);
+
+  const fetchGeofences = useCallback(async () => {
+    try {
+      const response = await getAllGeofences();
+      setGeofence(response);
+    } catch (error: any) {
+      console.error("Error fetching geofences:", error.message);
+    }
+  }, []);
+
+  // Fetch tickets and geofences
+  useEffect(() => {
+    fetchTickets();
+    fetchGeofences();
+  }, [fetchTickets]);
+
+  // Handle pull-to-refresh
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchTickets();
+    await fetchGeofences();
+    setIsRefreshing(false);
+  };
 
   // Handle Start Tracking
   const handleStart = async () => {
+    if (!selectedTicket) {
+      Alert.alert("No Ticket Selected", "Please select a ticket before starting work.");
+      return;
+    }
+
     try {
-      startBackgroundTracking('CONTINUOUS');  // Start Radar location tracking
+      await startBackgroundTracking(  // Start Radar trip tracking
+        userData?.user_id || '',
+        userData?.username || '',
+        selectedTicket.ticket_id,
+        selectedTicket.description,
+        selectedTicket.geofence_id,
+        geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.tag || ''
+      );
+      console.log('Trip started');
       setTracking(true);
     } catch (error: any) {
       Alert.alert("Failed to start tracking", error.message);
@@ -35,12 +91,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // Handle Stop Tracking
   const handleStop = async () => {
     stopBackgroundTracking();  // Stop Radar location tracking
+    console.log('Trip completed');
     setTracking(false);
   };
 
   // Handle Cancel Tracking
   const handleCancel = () => {
     cancelTrip();  // Cancel Radar trip tracking
+    console.log('Trip canceled');
     setTracking(false);
   };
 
@@ -69,37 +127,43 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <View className="flex-1 bg-[#f5f5f5] p-6 mt-4">
-      {/* Header: Profile Button (Left) and Logout Button (Right) */}
+    <ScrollView
+      className='bg-[#f5f5f5] p-6 mt-4'
+      contentContainerStyle={{ flexGrow: 1 }}
+      refreshControl={
+        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+      }
+    >
       <View className="flex-row items-center justify-between w-full">
-        {/* Profile Button */}
         <View className="flex items-start gap-y-1">
           <Text className="text-xl font-bold text-center">
-            Halo,
+            Halo, {userData?.username || "User"}
           </Text>
-          <Text className="text-xl font-bold text-center">
-            {userData?.username || "User"}
-          </Text>
+          {/* <Text className="text-xl font-bold text-center">
+          </Text> */}
         </View>
       </View>
 
-      {/* Profile Card */}
-      <View className="flex items-start justify-start p-8 mt-8 bg-white rounded-3xl">
-        <Text className="mb-4 text-2xl font-bold text-center">
-          {userData?.username}
-        </Text>
-        <View className="flex-row items-center gap-x-2">
-          <Text className="text-lg">Email:</Text>
-          <Text className="text-lg">{userData?.email}</Text>
-        </View>
-        <View className="flex-row items-center gap-x-2">
-          <Text className="text-lg">Telepon:</Text>
-          <Text className="text-lg">{userData?.phone}</Text>
-        </View>
+      {/* Tickets Dropdown */}
+      <View className="mt-4">
+        <Text className="mb-2 text-lg font-bold">Pilih Tiket</Text>
+        <Picker
+          selectedValue={selectedTicket?.id || null}
+          onValueChange={(value: any) => {
+            const ticket = tickets.find((t) => t.id === value);
+            setSelectedTicket(ticket || null);
+          }}
+          style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+        >
+          <Picker.Item label="Select a ticket..." value={null} />
+          {tickets.map((ticket) => (
+            <Picker.Item key={ticket.id} label={ticket.description} value={ticket.id} />
+          ))}
+        </Picker>
       </View>
 
       {/* Activity Card */}
-      <View className="items-center justify-start flex-1 p-8 mt-8 bg-white rounded-3xl">
+      <View className="items-center justify-start flex-1 p-8 mt-4 bg-white rounded-3xl">
         <View className="relative items-center justify-start flex-1 w-full">
           <Text className="mb-4 text-2xl font-bold text-center">Aktivitas</Text>
           <Text className="mb-4 text-lg text-center">
@@ -178,7 +242,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
