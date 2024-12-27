@@ -1,47 +1,75 @@
+import 'react-native-get-random-values';
+import { v7 as uuid } from 'uuid';
 import Radar from 'react-native-radar';
 
-// Initialize Radar SDK
+/**
+ * Initialize Radar SDK
+ */
 const initializeRadar = (publishableKey: string) => {
   Radar.initialize(publishableKey);
-  console.log('Radar successfully initialized.');
+  console.log('Radar SDK initialized successfully.');
 };
 
-// Request permissions for foreground and background location
+/**
+ * Request permissions for foreground and background location
+ */
 const requestLocationPermissions = async () => {
   const status = await Radar.getPermissionsStatus();
   console.log('Location permissions status:', status);
+
   if (status === 'NOT_DETERMINED') {
-    await Radar.requestPermissions(false); // Request foreground permissions first
-    await Radar.requestPermissions(true);  // Request background permissions second
+    console.log('Requesting foreground location permissions...');
+    await Radar.requestPermissions(false);
+    console.log('Requesting background location permissions...');
+    await Radar.requestPermissions(true);
   }
 };
 
-// Track location once (Foreground tracking)
+/**
+ * Track location once (Foreground tracking)
+ */
 const trackLocationOnce = async () => {
-  Radar.trackOnce().then((result) => {
+  try {
+    const result = await Radar.trackOnce();
+    console.log('TrackOnce Result:');
     console.log('Location:', result.location);
     console.log('Events:', result.events);
     console.log('User Metadata:', result.user);
-  }).catch((err) => {
-    console.error('Error tracking location:', err);
-  });
+  } catch (err) {
+    console.error('Error in TrackOnce:', err);
+  }
 };
 
-// Start background location tracking with Radar presets
-const startBackgroundTracking = async (preset: 'EFFICIENT' | 'RESPONSIVE' | 'CONTINUOUS') => {
+/**
+ * Started background tracking with a combination of custom tracking and trip tracking
+ */
+const startBackgroundTracking = async (user_id: string, username: string, ticket_id: string, description: string, geofence_id: string, geofence_tag: string) => {
   // Request location permissions
   await requestLocationPermissions();
 
-  // Set default trip options
+  // Generate externalId for trip
+  const tripExternalId = uuid();
+  console.log('Trip externalId:', tripExternalId);
+
+  // Default trip options and tracking options
   const defaultTripOptions: any = {
-    externalId: '0193e9e3-7243-7610-8566-119a522a6b79',
-    destinationGeofenceTag: 'jalan-raya',
-    destinationGeofenceExternalId: '0193e9e3-1ae3-7efc-b981-e4c3311c7f85',
+    externalId: tripExternalId,
+    destinationGeofenceTag: geofence_tag,
+    destinationGeofenceExternalId: geofence_id,
     mode: 'bike',
     approachingThreshold: 1,
-  }
-
-  // Set default tracking options
+    startTracking: true,
+    metadata: {
+      tripId: tripExternalId,
+      ticketId: ticket_id,
+      ticketDescription: description,
+      geofenceId: geofence_id,
+      geofenceTag: geofence_tag,
+      userId: user_id,
+      username: username
+    }
+  };
+  console.log('Default trip options:', defaultTripOptions);
   const defaultTrackingOptions: any = {
     desiredStoppedUpdateInterval: 30,
     fastestStoppedUpdateInterval: 30,
@@ -49,157 +77,136 @@ const startBackgroundTracking = async (preset: 'EFFICIENT' | 'RESPONSIVE' | 'CON
     fastestMovingUpdateInterval: 30,
     desiredSyncInterval: 20,
     desiredAccuracy: "high",
-    stopDuration: 0,
-    stopDistance: 0,
+    stopDuration: 140,
+    stopDistance: 70,
     startTrackingAfter: null,
     stopTrackingAfter: null,
-    replay: "all",
+    replay: "none",
     sync: "all",
     useStoppedGeofence: false,
     stoppedGeofenceRadius: 0,
     useMovingGeofence: false,
     movingGeofenceRadius: 0,
-    syncGeofences: false,
+    syncGeofences: true,
     syncGeofencesLimit: 0,
     foregroundServiceEnabled: true,
     beacons: false,
+  };
+  console.log('Default tracking options:', defaultTrackingOptions);
+
+  try {
+    // Start trip tracking (with default trip options and tracking options)
+    console.log('Starting trip...');
+    const result = await Radar.startTrip({
+      tripOptions: defaultTripOptions,
+      trackingOptions: defaultTrackingOptions
+    });
+    console.log('startTrip()');
+
+    // Start trip tracking (with default trip options and preset "CONTINUOUS" tracking options)
+    // const result = await Radar.startTrip({ tripOptions: defaultTripOptions });
+    // Start continuous tracking for background updates with CONTINUOUS preset
+    // Radar.startTrackingContinuous();
+    // console.log('Continuous tracking started for background updates.');
+
+    console.log('Trip started successfully:', result);
+  } catch (err) {
+    console.error('Error starting trip:', err);
   }
 
-  // Start trip
-  Radar.startTrip({
-    tripOptions: defaultTripOptions,
-    trackingOptions: defaultTrackingOptions
-  }).then((result) => {
-    console.log('Trip started:', result);
-  });
-  console.log('Trip started...');
-
-  // Track location once in foreground
-  trackLocationOnce();
-  const now = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
-  console.log('Location tracked once in foreground:', now);
-
-  // Start trip/background tracking with preset (without trip and tracking options)
-  // -> this is bad if you wanna configure many things like destination, externalId, mode, etc.
-  // if we use this preset, we don't need to startTrip and updateTrip manually
-  // console.log('Starting background tracking with preset:', preset);
-  // switch (preset) {
-  //   case 'EFFICIENT':
-  //     Radar.startTrackingEfficient();
-  //     break;
-  //   case 'RESPONSIVE':
-  //     Radar.startTrackingResponsive();
-  //     break;
-  //   case 'CONTINUOUS':
-  //     Radar.startTrackingContinuous();
-  //     break;
-  //   default:
-  //     console.error('Invalid preset for background tracking.');
-  // }
-
-  // // Start custom background tracking
-  // Radar.mockTracking({
-  //   origin: { // pondok kopi arabika viii blok ac 6 no. 5
-  //     latitude: -6.2324146301045875,
-  //     longitude: 106.94557809708698,
-  //   },
-  //   destination: { // farmers pondok kopi
-  //     latitude: -6.226135796446481,
-  //     longitude: 106.94324735176554,
-  //   },
-  //   mode: 'bike', // motor
-  //   steps: 1, // 1 location update
-  //   interval: 30, // per 30 seconds
-  // })
-  // console.log('Mock tracking started...');
-
-  // Kesimpulan mock tracking
-  // 1. berhasil mendapatkan data trips dan tracking dengan baik
-  // 2. perlu evaluasi dan cari kombinasi steps dan interval yg optimal
-  // 3. mungkin mode 'bike' mengakibatkan perhitungan waktu (ETA) yang tidak akurat dan cenderung lebih lambar sehingga user tiba di tujuan lebih telat dari ETA
-  // 4. untuk origin dan destination, sudah benar dan tidak ada masalah
-  // 5. perlu cek apakah tracking dan startTrip asli akan lebih kurang sama hasilnya dengan mock tracking atau berbeda
-  // 6. hasil dituju beserta implementasi yg diinginkan: startTrip, startTrackingContinuous, update trip secara otomatis (tidak ingin ada updateTrip manual), completeTrip, dan cancelTrip (butuh tombol terpisah di aplikasi)
-  // 7. testing di device asli, defined konfigurasi, geofence tujuan asli, dan tracking asli
-
-  // Update trip (seharusnya tidak perlu manual, tapi otomatis)
-  Radar.updateTrip({
-    status: 'started',
-    options: {
-      externalId: '0193e9e3-7243-7610-8566-119a522a6b79',
-      mode: 'bike',
-      destinationGeofenceTag: 'jalan-raya',
-      destinationGeofenceExternalId: '0193e9e3-1ae3-7efc-b981-e4c3311c7f85',
-      approachingThreshold: 1,
-    },
-  }).then((result) => {
-    console.log('Trip updated:', result);
-  });
-  console.log('Trip updated...');
-
-  // Set foreground service options
-  // Radar.setForegroundServiceOptions({
-  //   options: {
-  //     text: "Pekerjaan dimulai.",
-  //     title: "Lokasi diperbarui.",
-  //     updatesOnly: false,
-  //     importance: 2,
-  //     activity: 'com.alifmaulidanar.pastitracking'
-  //   }
-  // });
-
-  // Check if background tracking is active
-  const isTracking = Radar.isTracking();
-  console.log('Background tracking status:', isTracking);
-
-  // Listen for location updates
+  // Prepare listener for location updates
   listenForLocationUpdates();
+
+  // Start periodic trip updates
+  // startPeriodicTripUpdates('trip-123');
 };
 
-// Stop background location tracking
-const stopBackgroundTracking = () => {
-  // Complete trip
-  Radar.completeTrip().then((result) => {
-    console.log('Trip completed:', result);
-  });
-  console.log('Trip completed...');
+/**
+ * Stop trip and background tracking
+ */
+const stopBackgroundTracking = async () => {
+  try {
+    const result = await Radar.completeTrip();
+    console.log('Trip completed successfully:', result);
+  } catch (err) {
+    console.error('Error completing trip:', err);
+  }
 
-  // Stop background tracking
-  console.log('Stopping background tracking...');
   Radar.stopTracking();
+  console.log('Background tracking stopped.');
 };
 
-// Cancel trip
-const cancelTrip = () => {
-  Radar.cancelTrip().then((result) => {
-    console.log('Trip canceled:', result);
-  });
-  console.log('Trip canceled...');
+/**
+ * Cancel trip and stop background tracking
+ */
+const cancelTrip = async () => {
+  try {
+    const result = await Radar.cancelTrip();
+    console.log('Trip canceled successfully:', result);
+  } catch (err) {
+    console.error('Error canceling trip:', err);
+  }
 
-  // Stop background tracking
-  console.log('Stopping background tracking...');
   Radar.stopTracking();
+  console.log('Background tracking stopped after trip cancellation.');
 };
 
-// Event listeners for location updates
+/**
+ * Prepare listener for location updates
+ */
 const listenForLocationUpdates = () => {
-  // Listen for location updates
-  Radar.on('location', (result: { location: any; }) => {
+  Radar.on('location', (result: any) => {
     console.log('Location updated:', result.location);
   });
 
-  // Listen for events
+  Radar.on('events', (result: any) => {
+    console.log('Events detected:', result.events);
+  });
+
   Radar.on('error', (err: any) => {
-    console.error('Location error:', err);
+    console.error('Location tracking error:', err);
   });
 };
 
+/**
+ * Start periodic trip updates
+ */
+const startPeriodicTripUpdates = (tripId: string) => {
+  console.log(`Starting periodic trip updates for tripId: ${tripId}`);
+
+  // Update trip every 30 seconds
+  const updateInterval = 30000;
+
+  const intervalId = setInterval(async () => {
+    try {
+      const result = await Radar.updateTrip({
+        status: "unknown",
+        options: {
+          externalId: tripId, // ID trip
+          metadata: {
+            latitude: "37.773972",
+            longitude: "-122.431297",
+          },
+          destinationGeofenceTag: 'delivery-point',
+          destinationGeofenceExternalId: 'dest-123',
+        },
+      });
+      console.log('Trip updated:', result);
+    } catch (err) {
+      console.error('Error updating trip:', err);
+    }
+  }, updateInterval);
+
+  // Store intervalId in state
+  return intervalId;
+};
+
 export {
-  cancelTrip,
   initializeRadar,
-  trackLocationOnce,
-  stopBackgroundTracking,
-  startBackgroundTracking,
-  listenForLocationUpdates,
   requestLocationPermissions,
+  trackLocationOnce,
+  startBackgroundTracking,
+  stopBackgroundTracking,
+  cancelTrip,
+  listenForLocationUpdates,
 };
