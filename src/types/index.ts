@@ -52,3 +52,18 @@ export interface Geofence {
   created_at: string;
   updated_at: string;
 }
+
+export interface Trip {
+  radar_id: string,
+  external_id: string,
+  user_id: string,
+  geofence_id: string,
+  geofence_tag: string,
+  mode: string,
+  status: string,
+  duration: number,
+  live: boolean,
+  approaching_threshold: number,
+  locations?: number[],
+  metadata?: any,
+};
