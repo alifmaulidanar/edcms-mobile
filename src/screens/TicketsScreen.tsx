@@ -41,7 +41,7 @@ const TicketsScreen = () => {
     { key: "history", title: "Riwayat" },
   ]);
 
-  // Fetch tickets dari API
+  // Fetch tickets
   const fetchTickets = useCallback(async () => {
     try {
       if (userData) {
@@ -53,6 +53,7 @@ const TicketsScreen = () => {
     }
   }, [userData]);
 
+  // Fetch geofences
   const fetchGeofences = useCallback(async () => {
     try {
       const response = await getAllGeofences();
@@ -87,7 +88,7 @@ const TicketsScreen = () => {
   );
 
   const historyTickets = tickets.filter(
-    (ticket) => ticket.status === "finished" || ticket.status === "canceled"
+    (ticket) => ticket.status === "completed" || ticket.status === "canceled"
   );
 
   const TicketsList = ({ tickets, geofence, onRefresh, isRefreshing, handleTicketPress }: any) => (
@@ -104,7 +105,7 @@ const TicketsScreen = () => {
             ? "border-l-4 border-blue-600"
             : ticket.status === "on_progress"
               ? "border-l-4 border-yellow-600"
-              : ticket.status === "finished"
+              : ticket.status === "completed"
                 ? "border-l-4 border-green-600"
                 : "border-l-4 border-red-600"
             }`}
@@ -126,7 +127,7 @@ const TicketsScreen = () => {
                 ? "bg-blue-100 text-blue-600"
                 : ticket.status === "on_progress"
                   ? "bg-yellow-100 text-yellow-600"
-                  : ticket.status === "finished"
+                  : ticket.status === "completed"
                     ? "bg-green-100 text-green-600"
                     : "bg-red-100 text-red-600"
                 }`}
@@ -135,7 +136,7 @@ const TicketsScreen = () => {
                 ? "Ditugaskan"
                 : ticket.status === "on_progress"
                   ? "Berjalan"
-                  : ticket.status === "finished"
+                  : ticket.status === "completed"
                     ? "Selesai"
                     : "Dibatalkan"}
             </Text>
@@ -308,7 +309,7 @@ const TicketsScreen = () => {
                       ? "bg-blue-100 text-blue-600"
                       : selectedTicket.status === "on_progress"
                         ? "bg-yellow-100 text-yellow-600"
-                        : selectedTicket.status === "finished"
+                        : selectedTicket.status === "completed"
                           ? "bg-green-100 text-green-600"
                           : "bg-red-100 text-red-600"
                       }`}
@@ -317,7 +318,7 @@ const TicketsScreen = () => {
                       ? "Ditugaskan"
                       : selectedTicket.status === "on_progress"
                         ? "Berjalan"
-                        : selectedTicket.status === "finished"
+                        : selectedTicket.status === "completed"
                           ? "Selesai"
                           : "Dibatalkan"}
                   </Text>
