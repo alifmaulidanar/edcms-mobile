@@ -65,7 +65,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     setIsRefreshing(false);
   };
 
-  // Handle Start Tracking
+  // Handle Start Tracking (Start Trip)
   const handleStart = async () => {
     if (!selectedTicket) {
       Alert.alert("No Ticket Selected", "Please select a ticket before starting work.");
@@ -88,18 +88,22 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Handle Stop Tracking
+  // Handle Stop Tracking (Finish Trip)
   const handleStop = async () => {
-    stopBackgroundTracking();  // Stop Radar location tracking
-    console.log('Trip completed');
-    setTracking(false);
+    if (selectedTicket?.ticket_id) {
+      stopBackgroundTracking(selectedTicket.ticket_id);  // Stop Radar location tracking
+      console.log('Trip completed');
+      setTracking(false);
+    }
   };
 
-  // Handle Cancel Tracking
+  // Handle Cancel Tracking (Cancel Trip)
   const handleCancel = () => {
-    cancelTrip();  // Cancel Radar trip tracking
-    console.log('Trip canceled');
-    setTracking(false);
+    if (selectedTicket?.ticket_id) {
+      cancelTrip(selectedTicket?.ticket_id);  // Cancel Radar trip tracking
+      console.log('Trip canceled');
+      setTracking(false);
+    }
   };
 
   // Stopwatch effect
@@ -126,6 +130,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  // const handleDebug = async () => {
+  //   console.log('Debugging getTrip()');
+  //   await getTrip('01940e25-57bd-7134-8c4f-00aa5029b040');
+  // };
+
   return (
     <ScrollView
       className='bg-[#f5f5f5] p-6 mt-4'
@@ -139,8 +148,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           <Text className="text-xl font-bold text-center">
             Halo, {userData?.username || "User"}
           </Text>
-          {/* <Text className="text-xl font-bold text-center">
-          </Text> */}
         </View>
       </View>
 
@@ -161,6 +168,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           ))}
         </Picker>
       </View>
+
+      {/* Debugging */}
+      {/* <View className="mt-4">
+        <TouchableOpacity onPress={handleDebug}>
+          <Text className="text-lg font-bold text-blue-500">Debug getTrip()</Text>
+        </TouchableOpacity>
+      </View> */}
 
       {/* Activity Card */}
       <View className="items-center justify-start flex-1 p-8 mt-4 bg-white rounded-3xl">
