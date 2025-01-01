@@ -1,14 +1,17 @@
+import moment from "moment-timezone";
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
 import { getTickets } from '../api/tickets';
 import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from "expo-image-picker";
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
 import React, { useState, useEffect, useCallback } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
-import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
+import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator } from "react-native";
 
 type RootStackParamList = {
   Login: undefined;
@@ -26,6 +29,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [geofence, setGeofence] = useState<Geofence[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
@@ -68,7 +75,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // Handle Start Tracking (Start Trip)
   const handleStart = async () => {
     if (!selectedTicket) {
-      Alert.alert("No Ticket Selected", "Please select a ticket before starting work.");
+      Alert.alert("Tidak ada tiket yg dipilih", "Silakan pilih tiket sebelum memulai pekerjaan.");
       return;
     }
 
@@ -135,6 +142,93 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   //   await getTrip('01940e25-57bd-7134-8c4f-00aa5029b040');
   // };
 
+  // Handle picking photo
+  const handleTakePhoto = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      if (photos.length < 4) {
+        if (result.assets && result.assets.length > 0) {
+          setPhotos([...photos, result.assets[0].uri]);
+        }
+      } else {
+        Alert.alert("Limit Exceeded", "You can only upload up to 4 photos.");
+      }
+    }
+  };
+
+  // Handle photo preview
+  const handlePreviewPhoto = (uri: string) => {
+    setPreviewPhoto(uri);
+  };
+
+  // Handle delete photo
+  const handleDeletePhoto = (index: number) => {
+    Alert.alert(
+      "Hapus Foto",
+      "Anda ingin menghapus foto ini?",
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Hapus",
+          style: "destructive",
+          onPress: () => {
+            const updatedPhotos = photos.filter((_, i) => i !== index);
+            setPhotos(updatedPhotos);
+          },
+        },
+      ]
+    );
+  };
+
+  // Handle upload photos
+  const handleUploadPhotos = async () => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      photos.forEach((photo, index) => {
+        const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
+        const photoBlob = {
+          uri: `file://${photo}`,
+          type: "image/jpeg",
+          name: `${userData?.user_id}-${timestamp}-${index + 1}.jpg`
+        } as any;
+        formData.append("photos", photoBlob);
+      });
+
+      console.log("Uploading photos...");
+      console.log("FormData:", formData);
+
+      // const response = await fetch(`${process.env.EXPO_DEV_API_BASE_URL}/ticket/photos/upload`, {
+      const response = await fetch(`https://28de-182-253-57-28.ngrok-free.app/ticket/photos/upload`, {
+        method: "POST",
+        // headers: {
+        //   "Content-Type": "multipart/form-data",
+        // },
+        body: formData,
+      });
+
+      // console.log("Upload response:", response);
+
+      if (!response.ok) {
+        throw new Error("Failed to upload photos");
+      }
+
+      Alert.alert("Success", "Photos uploaded successfully");
+      setPhotos([]);
+    } catch (error) {
+      console.error("Error uploading photos:", error);
+      Alert.alert("Error", (error as Error).message);
+    } finally {
+      setIsUploading(false);
+      setPhotoModalVisible(false);
+    }
+  };
+
   return (
     <ScrollView
       className='bg-[#f5f5f5] p-6 mt-4'
@@ -153,7 +247,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Tickets Dropdown */}
       <View className="mt-4">
-        <Text className="mb-2 text-lg font-bold">Pilih Tiket</Text>
+        <Text className="mb-2 text-lg font-bold">Pilih Tiket yang Tersedia</Text>
         <Picker
           selectedValue={selectedTicket?.id || null}
           onValueChange={(value: any) => {
@@ -162,12 +256,142 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           }}
           style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
         >
-          <Picker.Item label="Select a ticket..." value={null} />
-          {tickets.map((ticket) => (
-            <Picker.Item key={ticket.id} label={ticket.description} value={ticket.id} />
-          ))}
+          <Picker.Item label="Pilih tiket..." value={null} />
+          {tickets
+            .filter((ticket) => ticket.status === 'assigned')
+            .map((ticket) => (
+              <Picker.Item key={ticket.id} label={ticket.description} value={ticket.id} />
+            ))}
         </Picker>
       </View>
+
+      {/* Photos */}
+      <TouchableOpacity
+        onPress={() => setPhotoModalVisible(true)}
+        className="items-center px-8 py-4 mt-4 bg-blue-500 rounded-full"
+        activeOpacity={0.7}
+      >
+        <Text className="text-xl font-bold text-white">Open Photo Modal</Text>
+      </TouchableOpacity>
+
+      {/* Photo Modal */}
+      <Modal
+        visible={photoModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setPhotoModalVisible(false)}
+      >
+        <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
+          <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
+            <Text className="mb-2 text-lg font-bold">Ambil Bukti Foto.</Text>
+            <Text className="mb-4 text-gray-500">Ambil 4 foto untuk menyelesaikan tiket.</Text>
+
+            {/* Photo Grid */}
+            <View className="flex flex-row flex-wrap justify-between gap-2 mb-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <View
+                  key={index}
+                  className="relative overflow-hidden bg-gray-100 border border-gray-300 rounded-md"
+                  style={{ width: "48%", aspectRatio: 1 }}
+                >
+                  {photos[index] ? (
+                    <TouchableOpacity
+                      onPress={() => handlePreviewPhoto(photos[index])}
+                    >
+                      <Image
+                        source={{ uri: photos[index] }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity
+                        onPress={() => handleDeletePhoto(index)}
+                        className="absolute p-1 bg-red-500 rounded-full top-2 right-2"
+                      >
+                        <Ionicons name="trash" size={20} color="white" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text className="text-center text-gray-400">Tidak ada foto</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+
+            {/* Action Button */}
+            {photos.length === 4 ? (
+              <TouchableOpacity
+                onPress={handleUploadPhotos}
+                className="items-center px-8 py-4 mb-4 bg-blue-500 rounded-full"
+                activeOpacity={0.7}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-xl font-bold text-white">Unggah foto</Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleTakePhoto}
+                className="items-center px-8 py-4 mb-4 bg-[#059669] rounded-full"
+                activeOpacity={0.7}
+              >
+                <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Close Modal Button */}
+            <TouchableOpacity
+              onPress={() => setPhotoModalVisible(false)}
+              className="items-center px-4 py-2 bg-gray-400 rounded-full"
+              activeOpacity={0.7}
+            >
+              <Text className="text-lg font-bold text-white">Tutup</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Preview Modal */}
+      <Modal
+        visible={!!previewPhoto}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setPreviewPhoto(null)}
+      >
+        <View className="items-center justify-center flex-1 px-4 bg-black bg-opacity-75">
+          {previewPhoto && (
+            <View className="w-full max-w-md overflow-hidden bg-white shadow-xl rounded-xl">
+              <Image
+                source={{ uri: previewPhoto }}
+                style={{ width: "100%", height: 400 }}
+                resizeMode="cover"
+              />
+              <View className="flex-row items-center justify-between px-6 py-4 border-t border-gray-200">
+                <TouchableOpacity
+                  onPress={() => {
+                    const index = photos.findIndex((photo) => photo === previewPhoto);
+                    handleDeletePhoto(index);
+                    setPreviewPhoto(null);
+                  }}
+                  className="flex-row items-center px-4 py-2 text-red-500 bg-red-100 rounded-lg"
+                >
+                  <Ionicons name="trash" size={20} color="#e3342f" />
+                  <Text className="ml-2 font-semibold text-red-500">Hapus</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setPreviewPhoto(null)}
+                  className="flex-row items-center px-4 py-2 text-gray-600 bg-gray-100 rounded-lg"
+                >
+                  <Ionicons name="close" size={20} color="#6b7280" />
+                  <Text className="ml-2 font-semibold text-gray-600">Tutup</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
 
       {/* Debugging */}
       {/* <View className="mt-4">
