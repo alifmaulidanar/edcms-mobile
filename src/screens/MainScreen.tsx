@@ -43,6 +43,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [photos, setPhotos] = useState<string[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
@@ -111,6 +112,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       stopBackgroundTracking(selectedTicket.ticket_id);  // Stop Radar location tracking
       console.log('Trip completed');
       setTracking(false);
+      setPhotos([]);
     }
   };
 
@@ -197,6 +199,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   // Handle upload photos
   const handleUploadPhotos = async () => {
+    const ticket_id = currentTicketID || selectedTicket?.ticket_id;
+    if (typeof ticket_id !== 'string') {
+      console.error('Invalid ticket_id:', ticket_id);
+      Alert.alert('Kesalahan', 'ticket_id tidak valid.');
+      return;
+    }
+
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -209,22 +218,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         const photoBlob = {
           uri: compressedUri,
           type: "image/jpeg",
-          name: `${userData?.user_id}-${timestamp}-${i + 1}.jpg`,
+          name: `${ticket_id}-${timestamp}-${i + 1}.jpg`,
         } as any;
         formData.append("photos", photoBlob);
       }
-
-      // Non-compressed photos (~6,5MB each)
-      // photos.forEach((photo, index) => {
-      //   const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
-      //   const photoBlob = {
-      //     uri: photo,
-      //     type: "image/jpeg",
-      //     name: `${userData?.user_id}-${timestamp}-${index + 1}.jpg`
-      //     // name: `${selectedTicket?.ticket_id}-${timestamp}-${index + 1}.jpg`
-      //   } as any;
-      //   formData.append("photos", photoBlob);
-      // });
 
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload`, {
         method: "POST",
@@ -235,10 +232,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload photos");
+        throw new Error("Foto gagal diunggah.");
       }
 
-      Alert.alert("Success", "Photos uploaded successfully");
+      Alert.alert("Sukses", "Foto berhasil diunggah.");
+      await handleStop();
       setPhotos([]);
     } catch (error) {
       console.error("Error uploading photos:", error);
@@ -247,6 +245,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       setIsUploading(false);
       setPhotoModalVisible(false);
     }
+  };
+
+  const handleCompleteTrip = async () => {
+    const ticket_id = currentTicketID || selectedTicket?.ticket_id;
+    if (!ticket_id || typeof ticket_id !== 'string') {
+      Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
+      return;
+    }
+    if (photos.length < 4) {
+      setPhotoModalVisible(true);
+      return;
+    }
+    await handleUploadPhotos();
   };
 
   return (
@@ -273,6 +284,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           onValueChange={(value: any) => {
             const ticket = tickets.find((t) => t.id === value);
             setSelectedTicket(ticket || null);
+            setCurrentTicketID(ticket?.ticket_id || null);
           }}
           style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
         >
@@ -286,13 +298,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Photos */}
-      <TouchableOpacity
+      {/* <TouchableOpacity
         onPress={() => setPhotoModalVisible(true)}
         className="items-center px-8 py-4 mt-4 bg-blue-500 rounded-full"
         activeOpacity={0.7}
       >
         <Text className="text-xl font-bold text-white">Open Photo Modal</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {/* Photo Modal */}
       <Modal
@@ -478,7 +490,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Start/Stop Button */}
         <TouchableOpacity
-          onPress={tracking ? handleStop : handleStart}
+          onPress={tracking ? handleCompleteTrip : handleStart}
           className={`items-center w-full py-4 px-8 rounded-full ${tracking ? "bg-red-500" : "bg-[#059669]"}`}
           activeOpacity={0.7}
         >
