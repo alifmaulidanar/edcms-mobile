@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from "expo-image-picker";
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import React, { useState, useEffect, useCallback } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
@@ -21,6 +22,15 @@ type RootStackParamList = {
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, "Main">;
+
+const compressImage = async (uri: string) => {
+  const manipResult = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: 800 } }], // Resize to a width of 800px
+    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Compress to 70%
+  );
+  return manipResult.uri;
+};
 
 const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [tracking, setTracking] = useState(false);
@@ -190,29 +200,39 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     setIsUploading(true);
     try {
       const formData = new FormData();
-      photos.forEach((photo, index) => {
+
+      // Compress and append photos to FormData (~200KB each)
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        const compressedUri = await compressImage(photo);
         const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
         const photoBlob = {
-          uri: `file://${photo}`,
+          uri: compressedUri,
           type: "image/jpeg",
-          name: `${userData?.user_id}-${timestamp}-${index + 1}.jpg`
+          name: `${userData?.user_id}-${timestamp}-${i + 1}.jpg`,
         } as any;
         formData.append("photos", photoBlob);
-      });
+      }
 
-      console.log("Uploading photos...");
-      console.log("FormData:", formData);
+      // Non-compressed photos (~6,5MB each)
+      // photos.forEach((photo, index) => {
+      //   const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
+      //   const photoBlob = {
+      //     uri: photo,
+      //     type: "image/jpeg",
+      //     name: `${userData?.user_id}-${timestamp}-${index + 1}.jpg`
+      //     // name: `${selectedTicket?.ticket_id}-${timestamp}-${index + 1}.jpg`
+      //   } as any;
+      //   formData.append("photos", photoBlob);
+      // });
 
-      // const response = await fetch(`${process.env.EXPO_DEV_API_BASE_URL}/ticket/photos/upload`, {
-      const response = await fetch(`https://28de-182-253-57-28.ngrok-free.app/ticket/photos/upload`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload`, {
         method: "POST",
-        // headers: {
-        //   "Content-Type": "multipart/form-data",
-        // },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
         body: formData,
       });
-
-      // console.log("Upload response:", response);
 
       if (!response.ok) {
         throw new Error("Failed to upload photos");
