@@ -38,7 +38,9 @@ const TicketsScreen = () => {
   const [index, setIndex] = useState(0);
   const [routes] = useState([
     { key: "active", title: "Aktif" },
-    { key: "history", title: "Riwayat" },
+    { key: "on_progress", title: "Berjalan" },
+    { key: "complete", title: "Selesai" },
+    { key: "canceled", title: "Batal" },
   ]);
 
   // Fetch tickets
@@ -83,12 +85,20 @@ const TicketsScreen = () => {
   };
 
   // Filter Tickets for Tabs
-  const activeTickets = tickets.filter(
-    (ticket) => ticket.status === "assigned" || ticket.status === "on_progress"
+  const assignedTickets = tickets.filter(
+    (ticket) => ticket.status === "assigned"
   );
 
-  const historyTickets = tickets.filter(
-    (ticket) => ticket.status === "completed" || ticket.status === "canceled"
+  const onProgressTickets = tickets.filter(
+    (ticket) => ticket.status === "on_progress"
+  );
+
+  const completedTickets = tickets.filter(
+    (ticket) => ticket.status === "completed"
+  );
+
+  const canceledTickets = tickets.filter(
+    (ticket) => ticket.status === "canceled"
   );
 
   const TicketsList = ({ tickets, geofence, onRefresh, isRefreshing, handleTicketPress }: any) => (
@@ -101,7 +111,7 @@ const TicketsScreen = () => {
       {tickets.map((ticket: any) => (
         <TouchableOpacity
           key={ticket.ticket_id}
-          className={`bg-white rounded-lg mt-4 p-4 mx-6 mb-4 shadow-md ${ticket.status === "assigned"
+          className={`bg-white rounded-lg mt-4 p-4 mx-4 shadow-md ${ticket.status === "assigned"
             ? "border-l-4 border-blue-600"
             : ticket.status === "on_progress"
               ? "border-l-4 border-yellow-600"
@@ -146,13 +156,18 @@ const TicketsScreen = () => {
           </Text>
         </TouchableOpacity>
       ))}
+      {tickets.length === 0 && (
+        <Text className="mt-8 text-center text-gray-500">
+          Tidak ada tiket yang tersedia.
+        </Text>
+      )}
     </ScrollView>
   );
 
   // Tab Scenes
   const ActiveTab = () => (
     <TicketsList
-      tickets={activeTickets}
+      tickets={assignedTickets}
       geofence={geofence}
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
@@ -160,9 +175,9 @@ const TicketsScreen = () => {
     />
   );
 
-  const HistoryTab = () => (
+  const OnProgressTab = () => (
     <TicketsList
-      tickets={historyTickets}
+      tickets={onProgressTickets}
       geofence={geofence}
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
@@ -170,33 +185,25 @@ const TicketsScreen = () => {
     />
   );
 
-  // Handle CTA Button
-  // const toggleTicketStatus = async () => {
-  //   if (selectedTicket) {
-  //     const newStatus =
-  //       selectedTicket.status === "assigned" ? "on_progress" : "assigned";
+  const CompleteTab = () => (
+    <TicketsList
+      tickets={completedTickets}
+      geofence={geofence}
+      onRefresh={onRefresh}
+      isRefreshing={isRefreshing}
+      handleTicketPress={handleTicketPress}
+    />
+  );
 
-  //     try {
-  //       // await updateTicketStatus(selectedTicket.ticket_id, newStatus);
-  //       setTickets((prevTickets) =>
-  //         prevTickets.map((ticket) =>
-  //           ticket.ticket_id === selectedTicket.ticket_id
-  //             ? { ...ticket, status: newStatus }
-  //             : ticket
-  //         )
-  //       );
-  //       setSelectedTicket({ ...selectedTicket, status: newStatus });
-  //       alert(
-  //         newStatus === "on_progress"
-  //           ? "Tiket telah diaktifkan."
-  //           : "Tiket telah ditunda."
-  //       );
-  //     } catch (error) {
-  //       // console.error("Error updating ticket status:", error.message);
-  //       alert("Gagal mengubah status tiket.");
-  //     }
-  //   }
-  // };
+  const CanceledTab = () => (
+    <TicketsList
+      tickets={canceledTickets}
+      geofence={geofence}
+      onRefresh={onRefresh}
+      isRefreshing={isRefreshing}
+      handleTicketPress={handleTicketPress}
+    />
+  );
 
   return (
     <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
@@ -207,7 +214,9 @@ const TicketsScreen = () => {
         navigationState={{ index, routes }}
         renderScene={SceneMap({
           active: ActiveTab,
-          history: HistoryTab,
+          on_progress: OnProgressTab,
+          complete: CompleteTab,
+          canceled: CanceledTab,
         })}
         onIndexChange={setIndex}
         initialLayout={{ width: Dimensions.get("window").width }}
