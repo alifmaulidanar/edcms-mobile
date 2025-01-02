@@ -69,6 +69,14 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          // "photosPermission": "Allow $(PRODUCT_NAME) to access your photos.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos.",
+          // "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
         "react-native-radar",
         {
           // boolean to enable iOS fraud detection, defaults to false
