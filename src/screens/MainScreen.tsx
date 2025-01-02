@@ -27,7 +27,7 @@ const compressImage = async (uri: string) => {
   const manipResult = await ImageManipulator.manipulateAsync(
     uri,
     [{ resize: { width: 800 } }], // Resize to a width of 800px
-    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Compress to 70%
+    { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG } // Compress to 50%
   );
   return manipResult.uri;
 };
@@ -200,9 +200,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // Handle upload photos
   const handleUploadPhotos = async () => {
     const ticket_id = currentTicketID || selectedTicket?.ticket_id;
+    const user_id = userData?.user_id || '';
     if (typeof ticket_id !== 'string') {
       console.error('Invalid ticket_id:', ticket_id);
       Alert.alert('Kesalahan', 'ticket_id tidak valid.');
+      return;
+    }
+
+    if (user_id === '') {
+      console.error('Invalid user_id:', user_id);
+      Alert.alert('Kesalahan', 'user_id tidak valid.');
       return;
     }
 
@@ -223,10 +230,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         formData.append("photos", photoBlob);
       }
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload`, {
+      // const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_NGROK_DEV}/ticket/photos/upload/${ticket_id}`, {
         method: "POST",
         headers: {
           "Content-Type": "multipart/form-data",
+          "user_id": user_id,
         },
         body: formData,
       });
