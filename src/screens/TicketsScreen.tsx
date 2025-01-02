@@ -1,13 +1,15 @@
 import { RootState } from "../store";
 import { useSelector } from "react-redux";
-import { getTickets } from "../api/tickets";
 import { Geofence, Ticket } from "../types";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
+import * as FileSystem from 'expo-file-system';
 import { getAllGeofences } from "../api/geofences";
+import * as MediaLibrary from 'expo-media-library';
+import { getSingleTicket, getTickets } from "../api/tickets";
 import React, { useEffect, useState, useCallback } from "react";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
-import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert } from "react-native";
 
 const copyToClipboard = (text: string) => {
   Clipboard.setStringAsync(text);
@@ -35,6 +37,8 @@ const TicketsScreen = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const userData = useSelector((state: RootState) => state.user);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [photos, setPhotos] = useState<any[]>([]);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [routes] = useState([
     { key: "active", title: "Aktif" },
@@ -80,6 +84,7 @@ const TicketsScreen = () => {
   };
 
   const handleTicketPress = (ticket: Ticket) => {
+    handleGetTicketWithPhotos(ticket.ticket_id);
     setSelectedTicket(ticket);
     setIsModalVisible(true);
   };
@@ -205,11 +210,22 @@ const TicketsScreen = () => {
     />
   );
 
+  const handleGetTicketWithPhotos = async (ticketId: string | undefined) => {
+    if (!ticketId) {
+      alert("Tidak ada ID tiket yang ditemukan.");
+      return;
+    }
+    const data = await getSingleTicket(ticketId);
+    setPhotos(data.photos);
+    return data;
+  }
+
   return (
     <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
       <Text className="px-6 pt-4 text-2xl font-semibold text-gray-700">
         Tiket Saya
       </Text>
+
       <TabView
         navigationState={{ index, routes }}
         renderScene={SceneMap({
@@ -311,7 +327,7 @@ const TicketsScreen = () => {
                 </TouchableOpacity>
 
                 {/* Status */}
-                <View className="flex-row justify-between mb-4">
+                <View className="flex-row justify-between mb-2">
                   <Text className="font-medium text-gray-500">Status:</Text>
                   <Text
                     className={`text-sm font-semibold px-2 py-1 rounded ${selectedTicket.status === "assigned"
@@ -331,6 +347,38 @@ const TicketsScreen = () => {
                           ? "Selesai"
                           : "Dibatalkan"}
                   </Text>
+                </View>
+
+                {/* Photos Section */}
+                <View className="mb-4">
+                  <Text className="mb-2 font-medium text-gray-500">Foto Bukti:</Text>
+                  {photos.length === 0 ? (
+                    <Text className="text-gray-500">Tidak ada foto.</Text>
+                  ) : (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+                      {photos.map((photo, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          onPress={() => setPreviewPhoto(photo.url)}
+                          style={{
+                            width: "50%",
+                            aspectRatio: 1,
+                            borderRadius: 8,
+                            overflow: "hidden",
+                            backgroundColor: "#f3f4f6",
+                            borderWidth: 1,
+                            borderColor: "#e5e7eb",
+                          }}
+                        >
+                          <Image
+                            source={{ uri: photo.url }}
+                            style={{ width: "100%", height: "100%" }}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
 
                 {/* Description */}
@@ -359,33 +407,80 @@ const TicketsScreen = () => {
               <Text className="text-gray-500">Memuat data tiket...</Text>
             )}
 
-            {/* CTA Button */}
-            {/* <Pressable
-              className={`items-center py-3 mb-4 rounded-lg ${selectedTicket?.status === "assigned"
-                ? "bg-blue-600"
-                : "bg-yellow-600"
-                }`}
-              onPress={toggleTicketStatus}
-            >
-              <Text className="font-medium text-white">
-                {selectedTicket?.status === "assigned"
-                  ? "Aktifkan"
-                  : "Tunda"}
-              </Text>
-            </Pressable> */}
-
             {/* Close Button */}
-            <Pressable
-              // className="items-center p-3 mt-2 bg-white border border-blue-500 rounded-lg"
+            <TouchableOpacity
               className="items-center p-3 mt-2 bg-blue-500 rounded-lg"
-              onPress={() => setIsModalVisible(false)}
+              onPress={() => {
+                setIsModalVisible(false)
+                setPhotos([]);
+              }}
             >
-              {/* <Text className="font-medium text-blue-500">Tutup</Text> */}
               <Text className="font-medium text-white">Tutup</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal >
+
+      {/* Photo Preview Modal */}
+      {previewPhoto && (
+        <Modal
+          visible={!!previewPhoto}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setPreviewPhoto(null)}
+        >
+          <View className="items-center justify-center flex-1 bg-black/90 backdrop-blur-2xl">
+            <Image
+              source={{ uri: previewPhoto }}
+              style={{ width: "100%", height: 400 }}
+              resizeMode="contain"
+            />
+
+            <View className="flex-row items-center gap-4 mt-4">
+              {/* Tombol Unduh Foto */}
+              <TouchableOpacity
+                className="items-center px-8 py-3 bg-gray-300 rounded-lg"
+                onPress={async () => {
+                  const { status } = await MediaLibrary.requestPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert(
+                      'Izin Ditolak',
+                      'Aplikasi memerlukan izin untuk menyimpan gambar ke galeri.'
+                    );
+                    return;
+                  }
+
+                  try {
+                    const fileUri = `${FileSystem.documentDirectory}${previewPhoto.split('/').pop()}`;
+                    const { uri } = await FileSystem.downloadAsync(previewPhoto, fileUri);
+                    await MediaLibrary.createAssetAsync(uri);
+                    Alert.alert('Sukses', 'Gambar berhasil disimpan ke galeri.');
+                  } catch (error) {
+                    console.error('Error downloading photo:', error);
+                    Alert.alert('Error', 'Gagal menyimpan gambar.');
+                  }
+                }}
+              >
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="download-outline" size={20} color="#4F46E5" />
+                  <Text className="font-medium text-gray-900">Download</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Tombol Tutup */}
+              <TouchableOpacity
+                className="items-center px-8 py-3 bg-blue-500 rounded-lg"
+                onPress={() => setPreviewPhoto(null)}
+              >
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="close-outline" size={20} color="#ffffff" />
+                  <Text className="font-medium text-white">Tutup</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View >
   );
 };
