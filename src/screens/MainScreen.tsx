@@ -44,6 +44,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
+  const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
@@ -106,6 +107,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const handleCompleteTrip = async () => {
+    const ticket_id = currentTicketID || selectedTicket?.ticket_id;
+    if (!ticket_id || typeof ticket_id !== 'string') {
+      Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
+      return;
+    }
+    if (photos.length < 4) {
+      setPhotoModalVisible(true);
+      return;
+    }
+    await handleUploadPhotos();
+  };
+
   // Handle Stop Tracking (Finish Trip)
   const handleStop = async () => {
     if (selectedTicket?.ticket_id) {
@@ -123,6 +137,48 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       console.log('Trip canceled');
       setTracking(false);
     }
+  };
+
+  const handleStartWithConfirmation = () => {
+    if (!selectedTicket) {
+      Alert.alert("Tidak ada tiket yg dipilih", "Silakan pilih tiket sebelum memulai pekerjaan.");
+      return;
+    }
+    setIsConfirmationVisible(true);
+  };
+
+  const handleCompletetWithConfirmation = () => {
+    Alert.alert(
+      "Konfirmasi Selesai",
+      "Apakah Anda yakin ingin menyelesaikan pekerjaan?",
+      [
+        {
+          text: "Batal",
+          style: "cancel", // Tombol Batal
+        },
+        {
+          text: "Ya",
+          onPress: () => handleCompleteTrip(),
+        },
+      ]
+    );
+  };
+
+  const handleCanceltWithConfirmation = () => {
+    Alert.alert(
+      "Konfirmasi Pembatalan",
+      "Apakah Anda yakin ingin membatalkan pekerjaan?",
+      [
+        {
+          text: "Batal",
+          style: "cancel", // Tombol Batal
+        },
+        {
+          text: "Ya",
+          onPress: () => handleCancel(),
+        },
+      ]
+    );
   };
 
   // Stopwatch effect
@@ -148,11 +204,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     const secs = seconds % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
-
-  // const handleDebug = async () => {
-  //   console.log('Debugging getTrip()');
-  //   await getTrip('01940e25-57bd-7134-8c4f-00aa5029b040');
-  // };
 
   // Handle picking photo
   const handleTakePhoto = async () => {
@@ -230,8 +281,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         formData.append("photos", photoBlob);
       }
 
-      // const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`, {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_NGROK_DEV}/ticket/photos/upload/${ticket_id}`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`, {
         method: "POST",
         headers: {
           "Content-Type": "multipart/form-data",
@@ -254,19 +304,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       setIsUploading(false);
       setPhotoModalVisible(false);
     }
-  };
-
-  const handleCompleteTrip = async () => {
-    const ticket_id = currentTicketID || selectedTicket?.ticket_id;
-    if (!ticket_id || typeof ticket_id !== 'string') {
-      Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
-      return;
-    }
-    if (photos.length < 4) {
-      setPhotoModalVisible(true);
-      return;
-    }
-    await handleUploadPhotos();
   };
 
   return (
@@ -499,7 +536,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Start/Stop Button */}
         <TouchableOpacity
-          onPress={tracking ? handleCompleteTrip : handleStart}
+          onPress={tracking ? handleCompletetWithConfirmation : handleStartWithConfirmation}
           className={`items-center w-full py-4 px-8 rounded-full ${tracking ? "bg-red-500" : "bg-[#059669]"}`}
           activeOpacity={0.7}
         >
@@ -511,7 +548,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         {/* Cancel Button */}
         {tracking && (
           <TouchableOpacity
-            onPress={handleCancel}
+            onPress={handleCanceltWithConfirmation}
             className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
             activeOpacity={0.7}
           >
@@ -521,6 +558,60 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Confirmation Modal to Start a Ticket */}
+      {isConfirmationVisible && (
+        <Modal
+          visible={isConfirmationVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsConfirmationVisible(false)}
+        >
+          <View className="items-center justify-center flex-1 px-4 bg-black/50">
+            <View className="w-full max-w-md p-6 bg-white rounded-lg">
+              <Text className="mb-4 text-xl font-semibold text-gray-800">
+                Konfirmasi Mulai
+              </Text>
+              <Text className="text-sm text-gray-600">
+                Apakah Anda yakin ingin memulai pekerjaan?
+              </Text>
+              <View className="my-4 gap-y-2">
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id}
+                </Text>
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">ID Tempat:</Text> {selectedTicket?.geofence_id}
+                </Text>
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description}
+                </Text>
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">Tempat tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket?.geofence_id)?.description}
+                </Text>
+              </View>
+              <View className="flex-row justify-between mt-4">
+                {/* Tombol Batal */}
+                <TouchableOpacity
+                  onPress={() => setIsConfirmationVisible(false)}
+                  className="px-6 py-3 bg-gray-300 rounded-lg"
+                >
+                  <Text className="text-sm font-semibold text-gray-700">Batal</Text>
+                </TouchableOpacity>
+                {/* Tombol Ya */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsConfirmationVisible(false);
+                    handleStart(); // Panggil fungsi handleStart
+                  }}
+                  className="px-6 py-3 bg-blue-500 rounded-lg"
+                >
+                  <Text className="text-sm font-semibold text-white">Ya</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </ScrollView>
   );
 };
