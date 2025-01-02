@@ -17,8 +17,6 @@ const initializeRadar = (publishableKey: string) => {
  */
 const requestLocationPermissions = async () => {
   const status = await Radar.getPermissionsStatus();
-  console.log('Location permissions status:', status);
-
   if (status === 'NOT_DETERMINED') {
     console.log('Requesting foreground location permissions...');
     await Radar.requestPermissions(false);
@@ -32,11 +30,7 @@ const requestLocationPermissions = async () => {
  */
 const trackLocationOnce = async () => {
   try {
-    const result = await Radar.trackOnce();
-    // console.log('TrackOnce Result:');
-    // console.log('Location:', result.location);
-    // console.log('Events:', result.events);
-    // console.log('User Metadata:', result.user);
+    await Radar.trackOnce();
   } catch (err) {
     console.error('Error in TrackOnce:', err);
   }
@@ -51,7 +45,6 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
 
   // Generate externalId for trip
   const tripExternalId = uuid();
-  console.log('Trip externalId:', tripExternalId);
 
   // Default trip options and tracking options
   const defaultTripOptions: any = {
@@ -71,7 +64,7 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
       username: username
     }
   };
-  // console.log('Default trip options:', defaultTripOptions);
+
   const defaultTrackingOptions: any = {
     desiredStoppedUpdateInterval: 30,
     fastestStoppedUpdateInterval: 30,
@@ -94,7 +87,6 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
     foregroundServiceEnabled: true,
     beacons: false,
   };
-  // console.log('Default tracking options:', defaultTrackingOptions);
 
   try {
     // Start trip tracking (with default trip options and tracking options)
@@ -103,16 +95,7 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
       tripOptions: defaultTripOptions,
       trackingOptions: defaultTrackingOptions
     });
-    console.log('startTrip()');
-
     trackLocationOnce();
-    console.log('trackLocationOnce()');
-
-    // Start trip tracking (with default trip options and preset "CONTINUOUS" tracking options)
-    // const result = await Radar.startTrip({ tripOptions: defaultTripOptions });
-    // Start continuous tracking for background updates with CONTINUOUS preset
-    // Radar.startTrackingContinuous();
-    // console.log('Continuous tracking started for background updates.');
 
     // Get trip's information from Radar
     const tripData = await getTrip(tripExternalId);
@@ -133,17 +116,13 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
 
     // Update ticket status to "on_progress" in Supabase
     await updateTicket(ticket_id, tripExternalId, 'on_progress');
-
-    console.log('Trip started successfully:', result);
+    console.log('Trip started successfully');
   } catch (err) {
     console.error('Error starting trip:', err);
   }
 
   // Prepare listener for location updates
   listenForLocationUpdates();
-
-  // Start periodic trip updates
-  // startPeriodicTripUpdates('trip-123');
 };
 
 /**
@@ -158,19 +137,17 @@ const stopBackgroundTracking = async (ticket_id: string) => {
     const tripData = await getTrip(trip_id);
 
     // Stop trip tracking and complete trip by Radar SDK
-    const result = await Radar.completeTrip();
+    await Radar.completeTrip();
 
     // Update ticket status to "completed" and duration in Supabase
     await updateTrip(trip_id, 'completed', tripData.duration);
 
     // Update ticket status to "completed" in Supabase
     await updateTicket(ticket_id, trip_id, 'completed');
-
-    console.log('Trip completed successfully:', result);
+    console.log('Trip completed successfully');
   } catch (err) {
     console.error('Error completing trip:', err);
   }
-
   Radar.stopTracking();
   console.log('Background tracking stopped.');
 };
@@ -187,19 +164,17 @@ const cancelTrip = async (ticket_id: string) => {
     const tripData = await getTrip(trip_id);
 
     // Cancel trip by Radar SDK
-    const result = await Radar.cancelTrip();
+    await Radar.cancelTrip();
 
     // Update ticket status to "canceled" and duration in Supabase
     await updateTrip(trip_id, 'canceled', tripData.duration);
 
     // Update ticket status to "canceled" in Supabase
     await updateTicket(ticket_id, trip_id, 'canceled');
-
-    console.log('Trip canceled successfully:', result);
+    console.log('Trip canceled successfully');
   } catch (err) {
     console.error('Error canceling trip:', err);
   }
-
   Radar.stopTracking();
   console.log('Background tracking stopped after trip cancellation.');
 };
@@ -208,51 +183,16 @@ const cancelTrip = async (ticket_id: string) => {
  * Prepare listener for location updates
  */
 const listenForLocationUpdates = () => {
-  Radar.on('location', (result: any) => {
-    console.log('Location updated:', result.location);
+  Radar.on('location', () => {
+    console.log('Location updated');
   });
-
-  Radar.on('events', (result: any) => {
-    console.log('Events detected:', result.events);
+  Radar.on('events', () => {
+    console.log('Events detected');
   });
-
   Radar.on('error', (err: any) => {
     console.error('Location tracking error:', err);
   });
 };
-
-/**
- * Start periodic trip updates
- */
-// const startPeriodicTripUpdates = (tripId: string) => {
-//   console.log(`Starting periodic trip updates for tripId: ${tripId}`);
-
-//   // Update trip every 30 seconds
-//   const updateInterval = 30000;
-
-//   const intervalId = setInterval(async () => {
-//     try {
-//       const result = await Radar.updateTrip({
-//         status: "unknown",
-//         options: {
-//           externalId: tripId, // ID trip
-//           metadata: {
-//             latitude: "37.773972",
-//             longitude: "-122.431297",
-//           },
-//           destinationGeofenceTag: 'delivery-point',
-//           destinationGeofenceExternalId: 'dest-123',
-//         },
-//       });
-//       console.log('Trip updated:', result);
-//     } catch (err) {
-//       console.error('Error updating trip:', err);
-//     }
-//   }, updateInterval);
-
-//   // Store intervalId in state
-//   return intervalId;
-// };
 
 export {
   initializeRadar,

@@ -17,9 +17,6 @@ export const login = async (email: string, password: string) => {
   Radar.setUserId(userId);
   Radar.setMetadata(userData)
   Radar.setDescription(`${userData.username} - ${userData.email} - ${userData.phone}`);
-  // console.log('Radar initialized with user ID:', userId);
-  // console.log('User metadata:', userData);
-  // console.log('User description:', `${userData.username} - ${userData.email} - ${userData.phone}`);
 
   return userData;
 };
