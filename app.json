@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Pasti Tracking",
-    "slug": "pastitracking",
+    "name": "PastiMS",
+    "slug": "pastims",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo/mdm-logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/logo/pasti-tracking-logo.png",
+      "image": "./assets/logo/pastims-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -42,7 +42,7 @@
         "foregroundImage": "./assets/logo/mdm-logo.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.alifmaulidanar.pastitracking"
+      "package": "com.app.pastims"
     },
     "web": {
       "favicon": "./assets/logo/mdm-logo.png",

@@ -69,7 +69,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       {/* Logo Produk (Di antara logo perusahaan dan form login) */}
       <View className="items-center justify-center">
         <Image
-          source={require("../../assets/logo/pasti-tracking-logo-new.png")}
+          source={require("../../assets/logo/pastims-logo-new.png")}
           style={{ width: "85%", height: 120 }}
           resizeMode="contain"
         />
