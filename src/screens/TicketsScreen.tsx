@@ -6,10 +6,11 @@ import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from 'expo-file-system';
 import { getAllGeofences } from "../api/geofences";
 import * as MediaLibrary from 'expo-media-library';
+import { Picker } from "@react-native-picker/picker";
 import { getSingleTicket, getTickets } from "../api/tickets";
-import React, { useEffect, useState, useCallback } from "react";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
-import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert } from "react-native";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert, TextInput } from "react-native";
 
 const copyToClipboard = (text: string) => {
   Clipboard.setStringAsync(text);
@@ -106,68 +107,148 @@ const TicketsScreen = () => {
     (ticket) => ticket.status === "canceled"
   );
 
-  const TicketsList = ({ tickets, geofence, onRefresh, isRefreshing, handleTicketPress }: any) => (
-    <ScrollView
-      contentContainerStyle={{ paddingBottom: 16 }}
-      refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+  const TicketsList = ({ tickets, geofence, onRefresh, isRefreshing, handleTicketPress }: any) => {
+    const [searchText, setSearchText] = useState(""); // Search state
+    const [sortKey, setSortKey] = useState("created_at"); // Sort state
+    const [sortOrder, setSortOrder] = useState("desc"); // Sort order state
+    const [filterKey, setFilterKey] = useState(""); // Filter state
+
+    // Filtered and sorted tickets
+    const filteredAndSortedTickets = useMemo(() => {
+      let filtered = tickets;
+
+      // Filter by search text
+      if (searchText) {
+        filtered = filtered.filter(
+          (ticket: any) =>
+            ticket.description.toLowerCase().includes(searchText.toLowerCase()) ||
+            geofence
+              .find((g: any) => g.external_id === ticket.geofence_id)
+              ?.description.toLowerCase()
+              .includes(searchText.toLowerCase()) ||
+            ticket.ticket_id.toLowerCase().includes(searchText.toLowerCase())
+        );
       }
-    >
-      {tickets.map((ticket: any) => (
-        <TouchableOpacity
-          key={ticket.ticket_id}
-          className={`bg-white rounded-lg mt-4 p-4 mx-4 shadow-md ${ticket.status === "assigned"
-            ? "border-l-4 border-blue-600"
-            : ticket.status === "on_progress"
-              ? "border-l-4 border-yellow-600"
-              : ticket.status === "completed"
-                ? "border-l-4 border-green-600"
-                : "border-l-4 border-red-600"
-            }`}
-          activeOpacity={0.9}
-          onPress={() => handleTicketPress(ticket)}
-        >
-          <View className="flex-row items-center mb-2">
-            <Ionicons name="ticket-outline" size={24} color="#4F46E5" />
-            <View className="flex-1 ml-2">
-              <Text className="ml-2 text-base font-medium text-gray-800">
-                {ticket.description}
-              </Text>
-              <Text className="flex-1 ml-2 text-sm font-medium text-gray-800">
-                {geofence.find((g: any) => g.external_id === ticket.geofence_id)?.description}
-              </Text>
+
+      // Filter by custom key
+      if (filterKey) {
+        filtered = filtered.filter((ticket: any) => ticket.status === filterKey);
+      }
+
+      // Sort by selected key
+      const sorted = [...filtered].sort((a: any, b: any) => {
+        const valueA = a[sortKey];
+        const valueB = b[sortKey];
+
+        if (sortOrder === "desc") {
+          return valueA < valueB ? 1 : -1;
+        }
+        return valueA > valueB ? 1 : -1;
+      });
+
+      return sorted;
+    }, [tickets, searchText, sortKey, sortOrder, filterKey, geofence]);
+
+    return (
+      <View>
+        {/* Search Bar */}
+        <TextInput
+          value={searchText}
+          onChangeText={(text) => setSearchText(text)}
+          placeholder="Cari tiket atau tempat..."
+          style={{
+            backgroundColor: "white",
+            padding: 10,
+            borderRadius: 8,
+            margin: 8,
+          }}
+        />
+
+        {/* Sort and Filter Controls */}
+        <View className="flex-row items-center justify-between p-4 mx-2 mb-2 bg-white rounded-lg">
+          <View className="flex-1 mr-2 gap-y-2">
+            {/* <Text className="text-sm font-medium text-gray-600">Urutkan berdasarkan:</Text> */}
+            <View className="justify-center h-12 bg-white border border-gray-300 rounded-lg">
+              <Picker
+                selectedValue={sortKey}
+                onValueChange={(value) => setSortKey(value)}
+                className="bg-white rounded-lg"
+              >
+                <Picker.Item label="Tanggal Dibuat" value="created_at" />
+                <Picker.Item label="Deskripsi" value="description" />
+              </Picker>
             </View>
-            <Text
-              className={`text-xs font-semibold px-2 py-1 rounded ${ticket.status === "assigned"
-                ? "bg-blue-100 text-blue-600"
-                : ticket.status === "on_progress"
-                  ? "bg-yellow-100 text-yellow-600"
-                  : ticket.status === "completed"
-                    ? "bg-green-100 text-green-600"
-                    : "bg-red-100 text-red-600"
-                }`}
-            >
-              {ticket.status === "assigned"
-                ? "Ditugaskan"
-                : ticket.status === "on_progress"
-                  ? "Berjalan"
-                  : ticket.status === "completed"
-                    ? "Selesai"
-                    : "Dibatalkan"}
-            </Text>
           </View>
-          <Text className="text-xs text-gray-400">
-            Dibuat: {new Date(ticket.created_at).toLocaleString("id-ID")}
-          </Text>
-        </TouchableOpacity>
-      ))}
-      {tickets.length === 0 && (
-        <Text className="mt-8 text-center text-gray-500">
-          Tidak ada tiket yang tersedia.
-        </Text>
-      )}
-    </ScrollView>
-  );
+          <View className="flex-1 ml-2 gap-y-2">
+            {/* <Text className="text-sm font-medium text-gray-600">Urutan:</Text> */}
+            <View className="justify-center h-12 bg-white border border-gray-300 rounded-lg">
+              <Picker
+                selectedValue={sortOrder}
+                onValueChange={(value) => setSortOrder(value)}
+                className="bg-white rounded-lg"
+              >
+                <Picker.Item label="Menurun" value="desc" />
+                <Picker.Item label="Menaik" value="asc" />
+              </Picker>
+            </View>
+          </View>
+        </View>
+
+        {/* Tickets List */}
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 130 }}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+        >
+          {filteredAndSortedTickets.map((ticket: any) => (
+            <TouchableOpacity
+              key={ticket.ticket_id}
+              style={{
+                backgroundColor: "white",
+                padding: 16,
+                marginTop: 6,
+                marginBottom: 6,
+                marginRight: 8,
+                marginLeft: 8,
+                borderRadius: 8,
+                borderLeftWidth: 4,
+                borderColor:
+                  ticket.status === "assigned"
+                    ? "blue"
+                    : ticket.status === "on_progress"
+                      ? "yellow"
+                      : ticket.status === "completed"
+                        ? "green"
+                        : "red",
+              }}
+              onPress={() => handleTicketPress(ticket)}
+            >
+              <View>
+                <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
+                <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
+                <Text>
+                  {
+                    geofence.find((g: any) => g.external_id === ticket.geofence_id)
+                      ?.description
+                  }
+                </Text>
+                <Text style={{ color: "gray" }}>
+                  Dibuat: {new Date(ticket.created_at).toLocaleString("id-ID")}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+
+          {filteredAndSortedTickets.length === 0 && (
+            <Text style={{ textAlign: "center", color: "gray", marginTop: 16 }}>
+              Tidak ada tiket yang tersedia.
+            </Text>
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
 
   // Tab Scenes
   const ActiveTab = () => (
@@ -353,7 +434,7 @@ const TicketsScreen = () => {
                 <View className="mb-4">
                   <Text className="mb-2 font-medium text-gray-500">Foto Bukti:</Text>
                   {photos.length === 0 ? (
-                    <Text className="text-gray-500">Tidak ada foto.</Text>
+                    <Text className="text-gray-500">-</Text>
                   ) : (
                     <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
                       {photos.map((photo, index) => (
