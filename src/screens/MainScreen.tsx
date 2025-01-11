@@ -10,6 +10,7 @@ import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import React, { useState, useEffect, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator } from "react-native";
@@ -79,6 +80,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // Handle pull-to-refresh
   const onRefresh = async () => {
     setIsRefreshing(true);
+    setSelectedTicket(null);
+    setCurrentTicketID(null);
     await fetchTickets();
     await fetchGeofences();
     setIsRefreshing(false);
@@ -92,6 +95,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     try {
+      const startTime = Date.now();
+      await AsyncStorage.setItem("startTime", startTime.toString());
+      await AsyncStorage.setItem("selectedTicket", JSON.stringify(selectedTicket));
+
       await startBackgroundTracking(  // Start Radar trip tracking
         userData?.user_id || '',
         userData?.username || '',
@@ -171,7 +178,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       [
         {
           text: "Batal",
-          style: "cancel", // Tombol Batal
+          style: "cancel",
         },
         {
           text: "Ya",
@@ -181,21 +188,49 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  // Stopwatch effect
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let interval: NodeJS.Timeout;
+
     if (tracking) {
-      timer = setInterval(() => {
-        setTime(prevTime => prevTime + 1);  // Increment time by 1 second
-      }, 1000);
-    } else {
-      setTime(0);  // Reset time when tracking stops
+      interval = setInterval(async () => {
+        try {
+          const storedStartTime = await AsyncStorage.getItem("startTime");
+          if (storedStartTime) {
+            const startTime = parseInt(storedStartTime, 10);
+            const elapsed = Math.floor((Date.now() - startTime) / 1000); // Hitung waktu yang telah berlalu
+            setTime(elapsed);
+          }
+        } catch (error) {
+          console.error("Error updating time:", error);
+        }
+      }, 1000); // Update setiap 1 detik
     }
 
     return () => {
-      if (timer) clearInterval(timer);  // Cleanup timer on component unmount or tracking stop
+      if (interval) clearInterval(interval); // Cleanup interval saat `tracking` dihentikan
     };
   }, [tracking]);
+
+
+  useEffect(() => {
+    const loadTrackingData = async () => {
+      try {
+        const storedStartTime = await AsyncStorage.getItem("startTime");
+        const storedTicket = await AsyncStorage.getItem("selectedTicket");
+        if (storedStartTime && storedTicket) {
+          const startTime = parseInt(storedStartTime, 10);
+          const elapsed = Math.floor((Date.now() - startTime) / 1000); // Hitung waktu yang telah berlalu
+          setTime(elapsed);
+          setSelectedTicket(JSON.parse(storedTicket));
+          setTracking(true);
+        }
+      } catch (error) {
+        console.error("Error loading tracking data:", error);
+      }
+    };
+
+    loadTrackingData();
+  }, []);
 
   // Format time as HH:MM:SS
   const formatTime = (seconds: number) => {
@@ -311,7 +346,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       className='bg-[#f5f5f5] p-6 mt-4'
       contentContainerStyle={{ flexGrow: 1 }}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        !tracking ? (
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        ) : undefined
       }
     >
       <View className="flex-row items-center justify-between w-full">
@@ -337,20 +374,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           <Picker.Item label="Pilih tiket..." value={null} />
           {tickets
             .filter((ticket) => ticket.status === 'assigned')
-            .map((ticket) => (
-              <Picker.Item key={ticket.id} label={ticket.description} value={ticket.id} />
-            ))}
+            .map((ticket) => {
+              const geofenceDescription = geofence.find((g) => g.external_id === ticket.geofence_id)?.description || ticket.description;
+              return (
+                <Picker.Item key={ticket.id} label={`${geofenceDescription} - ${ticket.description}`} value={ticket.id} />
+              );
+            })}
         </Picker>
       </View>
-
-      {/* Photos */}
-      {/* <TouchableOpacity
-        onPress={() => setPhotoModalVisible(true)}
-        className="items-center px-8 py-4 mt-4 bg-blue-500 rounded-full"
-        activeOpacity={0.7}
-      >
-        <Text className="text-xl font-bold text-white">Open Photo Modal</Text>
-      </TouchableOpacity> */}
 
       {/* Photo Modal */}
       <Modal
@@ -471,20 +502,31 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Debugging */}
-      {/* <View className="mt-4">
-        <TouchableOpacity onPress={handleDebug}>
-          <Text className="text-lg font-bold text-blue-500">Debug getTrip()</Text>
-        </TouchableOpacity>
-      </View> */}
-
       {/* Activity Card */}
       <View className="items-center justify-start flex-1 p-8 mt-4 bg-white rounded-3xl">
         <View className="relative items-center justify-start flex-1 w-full">
-          <Text className="mb-4 text-2xl font-bold text-center">Aktivitas</Text>
+          <Text className="mb-2 text-2xl font-bold text-center">Aktivitas</Text>
           <Text className="mb-4 text-lg text-center">
             {tracking ? "Berjalan..." : "Idle"}
           </Text>
+          <View>
+            {!tracking && !selectedTicket && (
+              <Text className="text-center text-gray-500">
+                Silakan pilih tiket sebelum memulai aktivitas.
+              </Text>
+            )}
+
+            {!tracking && selectedTicket && (
+              <View className="gap-y-2">
+                <Text className="text-center text-gray-600">
+                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket.description}
+                </Text>
+                <Text className="text-center text-gray-600">
+                  <Text className="font-bold">Lokasi Tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.description}
+                </Text>
+              </View>
+            )}
+          </View>
           {tracking && (
             <Text className="mb-4 text-xl text-center">
               {formatTime(time)}

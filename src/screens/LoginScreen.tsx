@@ -3,6 +3,7 @@ import { login } from "../api/auth";
 import { useDispatch } from "react-redux";
 import * as Location from 'expo-location';
 import React, { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import LocationPermissionModal from "../components/LocationPermission";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { View, Text, TextInput, Button, Alert, Platform, Linking, Image, TouchableOpacity } from "react-native";
@@ -32,6 +33,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const user = await login(email, password);
       dispatch(setUser(user));
+      await AsyncStorage.setItem("userData", JSON.stringify(user));
       navigation.navigate("Main");
     } catch (error: any) {
       Alert.alert("Login failed", error.message);
@@ -69,8 +71,8 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       {/* Logo Produk (Di antara logo perusahaan dan form login) */}
       <View className="items-center justify-center">
         <Image
-          source={require("../../assets/logo/pastims-logo-new.png")}
-          style={{ width: "85%", height: 120 }}
+          source={require("../../assets/logo/pastims-newest-logo.png")}
+          style={{ width: "100%", height: 120 }}
           resizeMode="contain"
         />
       </View>
