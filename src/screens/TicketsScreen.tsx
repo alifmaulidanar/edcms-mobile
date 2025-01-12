@@ -353,7 +353,8 @@ const TicketsScreen = () => {
                   <Text className="font-medium text-gray-500">ID Tiket:</Text>
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
-                      {`${selectedTicket.ticket_id.slice(0, 8)}...${selectedTicket.ticket_id.slice(-8)}`}
+                      ${selectedTicket.ticket_id}
+                      {/* {`${selectedTicket.ticket_id.slice(0, 8)}...${selectedTicket.ticket_id.slice(-8)}`} */}
                     </Text>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(`ID Tiket: ${selectedTicket.ticket_id}`)}
@@ -368,7 +369,8 @@ const TicketsScreen = () => {
                   <Text className="font-medium text-gray-500">ID Tempat:</Text>
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
-                      {`${selectedTicket.geofence_id.slice(0, 8)}...${selectedTicket.geofence_id.slice(-8)}`}
+                      ${selectedTicket.geofence_id}
+                      {/* {`${selectedTicket.geofence_id.slice(0, 8)}...${selectedTicket.geofence_id.slice(-8)}`} */}
                     </Text>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(`ID Tempat (${geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.description}): ${selectedTicket.geofence_id}`)}

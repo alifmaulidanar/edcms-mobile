@@ -98,7 +98,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       const startTime = Date.now();
       await AsyncStorage.setItem("startTime", startTime.toString());
       await AsyncStorage.setItem("selectedTicket", JSON.stringify(selectedTicket));
-
       await startBackgroundTracking(  // Start Radar trip tracking
         userData?.user_id || '',
         userData?.username || '',
@@ -129,20 +128,34 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   // Handle Stop Tracking (Finish Trip)
   const handleStop = async () => {
-    if (selectedTicket?.ticket_id) {
-      stopBackgroundTracking(selectedTicket.ticket_id);  // Stop Radar location tracking
-      console.log('Trip completed');
-      setTracking(false);
-      setPhotos([]);
+    try {
+      if (selectedTicket?.ticket_id) {
+        await stopBackgroundTracking(selectedTicket.ticket_id); // Stop Radar location tracking
+        await AsyncStorage.removeItem("startTime"); // Clear AsyncStorage
+        await AsyncStorage.removeItem("selectedTicket");
+        setTracking(false); // Reset state
+        setPhotos([]);
+        setSelectedTicket(null);
+        setTime(0);
+      }
+    } catch (error) {
+      console.error("Error stopping trip:", error);
     }
   };
 
   // Handle Cancel Tracking (Cancel Trip)
-  const handleCancel = () => {
-    if (selectedTicket?.ticket_id) {
-      cancelTrip(selectedTicket?.ticket_id);  // Cancel Radar trip tracking
-      console.log('Trip canceled');
-      setTracking(false);
+  const handleCancel = async () => {
+    try {
+      if (selectedTicket?.ticket_id) {
+        await cancelTrip(selectedTicket.ticket_id); // Cancel Radar trip tracking
+        await AsyncStorage.removeItem("startTime"); // Clear AsyncStorage
+        await AsyncStorage.removeItem("selectedTicket");
+        setTracking(false); // Reset state
+        setSelectedTicket(null);
+        setTime(0);
+      }
+    } catch (error) {
+      console.error("Error canceling trip:", error);
     }
   };
 
@@ -161,7 +174,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       [
         {
           text: "Batal",
-          style: "cancel", // Tombol Batal
+          style: "cancel",
         },
         {
           text: "Ya",
@@ -190,27 +203,24 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-
     if (tracking) {
       interval = setInterval(async () => {
         try {
           const storedStartTime = await AsyncStorage.getItem("startTime");
           if (storedStartTime) {
             const startTime = parseInt(storedStartTime, 10);
-            const elapsed = Math.floor((Date.now() - startTime) / 1000); // Hitung waktu yang telah berlalu
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
             setTime(elapsed);
           }
         } catch (error) {
           console.error("Error updating time:", error);
         }
-      }, 1000); // Update setiap 1 detik
+      }, 1000);
     }
-
     return () => {
-      if (interval) clearInterval(interval); // Cleanup interval saat `tracking` dihentikan
+      if (interval) clearInterval(interval); // Clear interval when component unmounts
     };
   }, [tracking]);
-
 
   useEffect(() => {
     const loadTrackingData = async () => {
@@ -219,7 +229,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         const storedTicket = await AsyncStorage.getItem("selectedTicket");
         if (storedStartTime && storedTicket) {
           const startTime = parseInt(storedStartTime, 10);
-          const elapsed = Math.floor((Date.now() - startTime) / 1000); // Hitung waktu yang telah berlalu
+          const elapsed = Math.floor((Date.now() - startTime) / 1000); // Time elapsed in seconds
           setTime(elapsed);
           setSelectedTicket(JSON.parse(storedTicket));
           setTracking(true);
@@ -228,7 +238,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         console.error("Error loading tracking data:", error);
       }
     };
-
     loadTrackingData();
   }, []);
 

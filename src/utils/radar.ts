@@ -17,9 +17,9 @@ const initializeRadar = (publishableKey: string) => {
 const requestLocationPermissions = async () => {
   const status = await Radar.getPermissionsStatus();
   if (status === 'NOT_DETERMINED') {
-    console.log('Requesting foreground location permissions...');
+    // console.log('Requesting foreground location permissions...');
     await Radar.requestPermissions(false);
-    console.log('Requesting background location permissions...');
+    // console.log('Requesting background location permissions...');
     await Radar.requestPermissions(true);
   }
 };
@@ -89,7 +89,7 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
 
   try {
     // Start trip tracking (with default trip options and tracking options)
-    console.log('Starting trip...');
+    // console.log('Starting trip...');
     const result = await Radar.startTrip({
       tripOptions: defaultTripOptions,
       trackingOptions: defaultTrackingOptions
@@ -115,7 +115,7 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
 
     // Update ticket status to "on_progress" in Supabase
     await updateTicket(ticket_id, tripExternalId, 'on_progress');
-    console.log('Trip started successfully');
+    // console.log('Trip started successfully');
   } catch (err) {
     console.error('Error starting trip:', err);
   }
@@ -129,6 +129,8 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
  */
 const stopBackgroundTracking = async (ticket_id: string) => {
   try {
+    trackLocationOnce();
+
     // Get tripId from Supabase by ticketId
     const trip_id = await getTripIdByTicketId(ticket_id);
 
@@ -143,12 +145,12 @@ const stopBackgroundTracking = async (ticket_id: string) => {
 
     // Update ticket status to "completed" in Supabase
     await updateTicket(ticket_id, trip_id, 'completed');
-    console.log('Trip completed successfully');
+    // console.log('Trip completed successfully');
   } catch (err) {
     console.error('Error completing trip:', err);
   }
   Radar.stopTracking();
-  console.log('Background tracking stopped.');
+  // console.log('Background tracking stopped.');
 };
 
 /**
@@ -156,6 +158,8 @@ const stopBackgroundTracking = async (ticket_id: string) => {
  */
 const cancelTrip = async (ticket_id: string) => {
   try {
+    trackLocationOnce();
+
     // Get tripId from Supabase by ticketId
     const trip_id = await getTripIdByTicketId(ticket_id);
 
@@ -170,12 +174,12 @@ const cancelTrip = async (ticket_id: string) => {
 
     // Update ticket status to "canceled" in Supabase
     await updateTicket(ticket_id, trip_id, 'canceled');
-    console.log('Trip canceled successfully');
+    // console.log('Trip canceled successfully');
   } catch (err) {
     console.error('Error canceling trip:', err);
   }
   Radar.stopTracking();
-  console.log('Background tracking stopped after trip cancellation.');
+  // console.log('Background tracking stopped after trip cancellation.');
 };
 
 /**

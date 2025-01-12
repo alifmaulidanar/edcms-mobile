@@ -106,7 +106,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         <View className="w-full px-6 pt-8 pb-2">
-          <Text className="mb-4 text-base font-medium text-gray-700">
+          <Text className="mb-4 text-base font-bold text-gray-700">
             Informasi Pribadi
           </Text>
           {profile ? (
