@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/logo/pastims-logo.png",
+      "image": "./assets/logo/pastims-newest-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -72,8 +72,8 @@
         "expo-media-library",
         {
           // "photosPermission": "Allow $(PRODUCT_NAME) to access your photos.",
-          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos.",
-          // "isAccessMediaLocationEnabled": true
+          // "isAccessMediaLocationEnabled": true,
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos."
         }
       ],
       [

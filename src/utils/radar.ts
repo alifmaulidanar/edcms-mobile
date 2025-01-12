@@ -1,6 +1,6 @@
-import 'react-native-get-random-values';
-import { v7 as uuid } from 'uuid';
+import { generateId } from './utils';
 import Radar from 'react-native-radar';
+import 'react-native-get-random-values';
 import { updateTicket } from '../api/tickets';
 import { createTrip, getTrip, getTripIdByTicketId, updateTrip } from '../api/trip';
 
@@ -9,7 +9,6 @@ import { createTrip, getTrip, getTripIdByTicketId, updateTrip } from '../api/tri
  */
 const initializeRadar = (publishableKey: string) => {
   Radar.initialize(publishableKey);
-  console.log('Radar SDK initialized successfully.');
 };
 
 /**
@@ -44,7 +43,7 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
   await requestLocationPermissions();
 
   // Generate externalId for trip
-  const tripExternalId = uuid();
+  const tripExternalId = generateId("PJ");
 
   // Default trip options and tracking options
   const defaultTripOptions: any = {
