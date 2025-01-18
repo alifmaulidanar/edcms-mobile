@@ -1,12 +1,12 @@
 import { Profile } from "../types";
-import { RootState } from "../store";
-import { useSelector } from "react-redux";
+import Constants from "expo-constants";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { getProfile, logout } from "../api/auth";
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { View, Text, ScrollView, Image, RefreshControl, TouchableOpacity, Modal } from "react-native";
+import { View, Text, ScrollView, Image, RefreshControl, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
 
 type RootStackParamList = {
   Login: undefined;
@@ -18,35 +18,39 @@ type RootStackParamList = {
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
-  const userData = useSelector((state: RootState) => state.user);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fungsi untuk fetch data profile
-  const fetchProfile = async () => {
+  const fetchInitialData = async () => {
     try {
+      const userData = await AsyncStorage.getItem("userData");
       if (userData) {
-        const response = await getProfile(userData.user_id);
-        setProfile(response);
+        setProfile(JSON.parse(userData));
       }
-    } catch (error: any) {
-      console.error("Error fetching profile:", error.message);
+    } catch (error) {
+      console.error("Error reading userData from AsyncStorage:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchProfile();
-  }, [userData]);
-
-  // Handle pull-to-refresh
-  const onRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchProfile(); // Refresh profile data
-    setIsRefreshing(false);
+  const fetchProfile = async () => {
+    try {
+      setIsRefreshing(true);
+      if (profile) {
+        const response = await getProfile(profile.user_id);
+        setProfile(response);
+        await AsyncStorage.setItem("userData", JSON.stringify(response));
+      }
+    } catch (error: any) {
+      console.error("Error fetching profile:", error.message);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  // Fungsi untuk salin User ID ke clipboard
   const copyToClipboard = (text: string) => {
     Clipboard.setStringAsync(text);
     alert("ID pengguna telah disalin ke clipboard!");
@@ -56,18 +60,33 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const handleLogout = async () => {
     await logout();
     hideDialog();
+    await AsyncStorage.removeItem("userData");
     navigation.navigate("Login");
   };
 
-  // Show Dialog for Logout confirmation
   const showDialog = () => setVisible(true);
   const hideDialog = () => setVisible(false);
+
+  // App Version
+  const appVersion = Constants.expoConfig?.version;
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-[#f5f5f5]">
+        <ActivityIndicator size="large" color="#84439b" />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
       className="flex-1 bg-[#f5f5f5] p-6 mt-8"
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        <RefreshControl refreshing={isRefreshing} onRefresh={fetchProfile} />
       }
     >
       <View className="flex items-end w-full mb-4">
@@ -122,19 +141,31 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
               <View className="flex-row items-center justify-between">
                 <Text className="text-gray-500">Dibuat pada</Text>
                 <Text className="font-medium text-gray-800">
-                  {new Date(profile.created_at).toLocaleString("id-ID", {
-                    timeZone: "Asia/Jakarta",
-                  })}{" "}
-                  WIB
+                  {(() => {
+                    const createdAt = new Date(profile.created_at);
+                    const day = String(createdAt.getDate()).padStart(2, "0");
+                    const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                    const year = createdAt.getFullYear();
+                    const hours = String(createdAt.getHours()).padStart(2, "0");
+                    const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                    const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                    return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                  })()}
                 </Text>
               </View>
               <View className="flex-row items-center justify-between">
                 <Text className="text-gray-500">Diperbarui pada</Text>
                 <Text className="font-medium text-gray-800">
-                  {new Date(profile.updated_at).toLocaleString("id-ID", {
-                    timeZone: "Asia/Jakarta",
-                  })}{" "}
-                  WIB
+                  {(() => {
+                    const updatedAt = new Date(profile.updated_at);
+                    const day = String(updatedAt.getDate()).padStart(2, "0");
+                    const month = String(updatedAt.getMonth() + 1).padStart(2, "0");
+                    const year = updatedAt.getFullYear();
+                    const hours = String(updatedAt.getHours()).padStart(2, "0");
+                    const minutes = String(updatedAt.getMinutes()).padStart(2, "0");
+                    const seconds = String(updatedAt.getSeconds()).padStart(2, "0");
+                    return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                  })()}
                 </Text>
               </View>
               <View className="flex-row items-center justify-between">
@@ -146,11 +177,16 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           ) : (
             <Text className="text-center text-gray-500">
-              Loading profile...
+              Data pengguna tidak tersedia.
             </Text>
           )}
         </View>
       </View>
+
+      {/* App Version */}
+      <Text className="mt-4 text-center text-gray-600">
+        Versi: {appVersion}
+      </Text>
 
       {/* Logout Confirmation Modal */}
       {visible && (

@@ -43,6 +43,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadMessage, setUploadMessage] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
@@ -137,6 +139,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setPhotos([]);
         setSelectedTicket(null);
         setTime(0);
+        setIsUploading(false);
+        setUploadProgress(0);
+        setUploadMessage("");
+        setPhotoModalVisible(false);
+        Alert.alert("Sukses", "Foto berhasil diunggah.");
+        onRefresh();
       }
     } catch (error) {
       console.error("Error stopping trip:", error);
@@ -153,6 +161,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setTracking(false); // Reset state
         setSelectedTicket(null);
         setTime(0);
+        onRefresh();
       }
     } catch (error) {
       console.error("Error canceling trip:", error);
@@ -309,12 +318,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     setIsUploading(true);
+    setUploadProgress(0);
+    setUploadMessage("Memulai proses unggah...");
+
     try {
       const formData = new FormData();
+      const totalSteps = photos.length * 2;
+      let currentStep = 0;
 
       // Compress and append photos to FormData (~200KB each)
       for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
+        setUploadMessage(`Mengompresi foto ${i + 1}...`);
         const compressedUri = await compressImage(photo);
         const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
         const photoBlob = {
@@ -323,8 +338,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           name: `${ticket_id}-${timestamp}-${i + 1}.jpg`,
         } as any;
         formData.append("photos", photoBlob);
+        currentStep++;
+        setUploadProgress(Math.round((currentStep / totalSteps) * 100));
       }
 
+      setUploadMessage(`Mengunggah semua foto...`);
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`, {
         method: "POST",
         headers: {
@@ -335,12 +353,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       });
 
       if (!response.ok) {
+        console.log({ response });
+        console.error("Error uploading photo:", response.statusText);
         throw new Error("Foto gagal diunggah.");
       }
 
-      Alert.alert("Sukses", "Foto berhasil diunggah.");
+      setUploadMessage("Semua foto berhasil diunggah.");
+      setUploadProgress(100);
       await handleStop();
-      setPhotos([]);
     } catch (error) {
       console.error("Error uploading photos:", error);
       Alert.alert("Error", (error as Error).message);
@@ -397,7 +417,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         visible={photoModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setPhotoModalVisible(false)}
+        onRequestClose={() => {
+          if (!isUploading) setPhotoModalVisible(false);
+        }}
       >
         <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
           <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
@@ -459,13 +481,29 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             )}
 
+            {/* Progress Bar and Message */}
+            {isUploading && (
+              <View className="mt-2 mb-6 ">
+                <Text className="text-center text-gray-600">{uploadMessage}</Text>
+                <View className="relative w-full h-4 mt-2 bg-gray-200 rounded-full">
+                  <View
+                    className="absolute top-0 left-0 h-4 bg-blue-500 rounded-full"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </View>
+              </View>
+            )}
+
             {/* Close Modal Button */}
             <TouchableOpacity
+              disabled={isUploading}
               onPress={() => setPhotoModalVisible(false)}
-              className="items-center px-4 py-2 bg-gray-400 rounded-full"
+              className={`items-center px-4 py-2 rounded-full ${isUploading ? "bg-gray-300" : "bg-gray-400"}`}
               activeOpacity={0.7}
             >
-              <Text className="text-lg font-bold text-white">Tutup</Text>
+              <Text className="text-lg font-bold text-white">
+                {isUploading ? "Sedang memproses..." : "Tutup"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

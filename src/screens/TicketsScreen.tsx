@@ -234,7 +234,16 @@ const TicketsScreen = () => {
                   }
                 </Text>
                 <Text style={{ color: "gray" }}>
-                  Dibuat: {new Date(ticket.created_at).toLocaleString("id-ID")}
+                  Dibuat: {(() => {
+                    const createdAt = new Date(ticket.created_at);
+                    const day = String(createdAt.getDate()).padStart(2, "0");
+                    const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                    const year = createdAt.getFullYear();
+                    const hours = String(createdAt.getHours()).padStart(2, "0");
+                    const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                    const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                    return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                  })()}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -353,7 +362,7 @@ const TicketsScreen = () => {
                   <Text className="font-medium text-gray-500">ID Tiket:</Text>
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
-                      ${selectedTicket.ticket_id}
+                      {selectedTicket.ticket_id}
                       {/* {`${selectedTicket.ticket_id.slice(0, 8)}...${selectedTicket.ticket_id.slice(-8)}`} */}
                     </Text>
                     <TouchableOpacity
@@ -369,7 +378,7 @@ const TicketsScreen = () => {
                   <Text className="font-medium text-gray-500">ID Tempat:</Text>
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
-                      ${selectedTicket.geofence_id}
+                      {selectedTicket.geofence_id}
                       {/* {`${selectedTicket.geofence_id.slice(0, 8)}...${selectedTicket.geofence_id.slice(-8)}`} */}
                     </Text>
                     <TouchableOpacity
@@ -474,7 +483,16 @@ const TicketsScreen = () => {
                 <View className="flex-row justify-between mb-4">
                   <Text className="font-medium text-gray-500">Dibuat Pada:</Text>
                   <Text className="text-gray-800">
-                    {new Date(selectedTicket.created_at).toLocaleString("id-ID")}
+                    {(() => {
+                      const createdAt = new Date(selectedTicket.created_at);
+                      const day = String(createdAt.getDate()).padStart(2, "0");
+                      const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                      const year = createdAt.getFullYear();
+                      const hours = String(createdAt.getHours()).padStart(2, "0");
+                      const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                      const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                      return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                    })()}
                   </Text>
                 </View>
 
@@ -482,7 +500,16 @@ const TicketsScreen = () => {
                 <View className="flex-row justify-between mb-4">
                   <Text className="font-medium text-gray-500">Diperbarui Pada:</Text>
                   <Text className="text-gray-800">
-                    {new Date(selectedTicket.updated_at).toLocaleString("id-ID")}
+                    {(() => {
+                      const createdAt = new Date(selectedTicket.updated_at);
+                      const day = String(createdAt.getDate()).padStart(2, "0");
+                      const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                      const year = createdAt.getFullYear();
+                      const hours = String(createdAt.getHours()).padStart(2, "0");
+                      const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                      const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                      return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                    })()}
                   </Text>
                 </View>
               </View>

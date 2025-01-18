@@ -1,5 +1,6 @@
 import { setUser } from "../store";
 import { login } from "../api/auth";
+import Constants from "expo-constants";
 import { useDispatch } from "react-redux";
 import * as Location from 'expo-location';
 import React, { useState, useEffect } from "react";
@@ -57,6 +58,8 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     checkPermissions();
   }, []);
 
+  const appVersion = Constants.expoConfig?.version;
+
   return (
     <View className="flex-1 bg-[#f5f5f5] mt-4 px-6 py-6 justify-between">
       {/* Logo Perusahaan (Posisi di atas, tengah) */}
@@ -106,6 +109,11 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
           disabled={!permissionsGranted}
         />
       </View>
+
+      {/* App Version */}
+      <Text className="mt-4 text-center text-gray-600">
+        Versi: {appVersion}
+      </Text>
 
       {/* Error Text */}
       {!permissionsGranted && (
