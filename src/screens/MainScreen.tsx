@@ -1,12 +1,13 @@
 import moment from "moment-timezone";
 import { RootState } from '../store';
-// import * as Location from "expo-location";
 import { useSelector } from 'react-redux';
 import { getTickets } from '../api/tickets';
 import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
+// import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
+import * as MediaLibrary from 'expo-media-library';
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -149,11 +150,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setPhotos([]);
         setSelectedTicket(null);
         setTime(0);
-        setIsUploading(false);
         setUploadProgress(0);
         setUploadMessage("");
-        setPhotoModalVisible(false);
         Alert.alert("Sukses", "Foto berhasil diunggah.");
+        setIsUploading(false);
+        setPhotoModalVisible(false);
         onRefresh();
       }
     } catch (error) {
@@ -339,7 +340,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       const storedData = await AsyncStorage.getItem("pendingUploads");
       let pendingUploads = storedData ? JSON.parse(storedData) : [];
       if (!Array.isArray(pendingUploads) || pendingUploads.length === 0) {
-        console.log("📭 Tidak ada foto yang perlu diunggah.");
+        // console.log("📭 Tidak ada foto yang perlu diunggah.");
         return;
       }
 
@@ -360,16 +361,23 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             // console.log(`🔵 [${ticket_id}] Mengompresi foto ${j + 1} dari ${requiredPhotoCount}...`);
             const compressedUri = await compressImage(photos[j]);
             const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
+            const fileName = `${ticket_id}-${timestamp}-${j + 1}.jpg`;
             formData.append("photos", {
               uri: compressedUri,
               type: "image/jpeg",
-              name: `${ticket_id}-${timestamp}-${j + 1}.jpg`,
+              name: fileName,
             } as any);
             // console.log(`✅ [${ticket_id}] Kompresi foto ${j + 1} selesai.`);
+            const { status } = await MediaLibrary.requestPermissionsAsync();
+            if (status === 'granted') {
+              await MediaLibrary.saveToLibraryAsync(compressedUri);
+            } else {
+              console.log('Permission denied for saving to media library');
+            }
           } catch (error) {
             console.error(`❌ [${ticket_id}] Gagal mengompresi foto ${j + 1}:`, error);
             isSuccess = false;
-            break; // **Hentikan proses jika ada kegagalan**
+            break;
           }
         }
 
@@ -473,7 +481,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             <Text className="mb-4 text-gray-500">Ambil {requiredPhotoCount} foto untuk menyelesaikan tiket.</Text>
 
             {/* Photo Grid */}
-            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={true}>
+            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={true}>
               <View className="flex flex-row flex-wrap justify-between gap-2 mb-4">
                 {Array.from({ length: requiredPhotoCount }).map((_, index) => (
                   <View
@@ -515,7 +523,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   setPhotos([]);
                   handleStop();
                   setUploadMessage("Foto akan diunggah di latar belakang aplikasi dalam beberapa saat.");
-                  setPhotoModalVisible(false);
                 }}
                 className="items-center px-8 py-4 my-4 bg-blue-500 rounded-full"
                 activeOpacity={0.7}
@@ -529,7 +536,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             ) : (
               <TouchableOpacity
                 onPress={handleTakePhoto}
-                className="items-center px-8 py-4 mb-4 bg-[#059669] rounded-full"
+                className="items-center px-8 py-4 my-4 bg-[#059669] rounded-full"
                 activeOpacity={0.7}
               >
                 <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
