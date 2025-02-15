@@ -1,0 +1,67 @@
+ const handleTestPhoto = async () => {
+    // 1. Minta izin
+    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+    const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+
+    if (cameraStatus !== 'granted' || locationStatus !== 'granted') {
+      Alert.alert("Izin diperlukan", "Izinkan akses kamera dan lokasi untuk melanjutkan.");
+      return;
+    }
+
+    console.log('Taking photo...');
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // allowsEditing: true,
+      quality: 1,
+    });
+
+    // 2. Ambil lokasi terlebih dahulu
+    console.log('Getting location...');
+    const location = await Location.getCurrentPositionAsync({});
+    // const address = await getLocationAddress(
+    //   location.coords.latitude,
+    //   location.coords.longitude
+    // );
+
+    // 3. Ambil foto
+
+    // 4. Format teks
+    console.log('Formatting text...');
+    const timestamp = moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss");
+    const locationText = [
+      location.coords.latitude,
+      location.coords.longitude,
+      // address.neighbourhood || 'Kelurahan: -',
+      // address.suburb || 'Kecamatan: -',
+      // address.city || 'Kota: -',
+      // address.region || 'Provinsi: -'
+    ].join('\n');
+
+    // 5. Tambahkan stamp ke foto menggunakan image-marker
+    console.log('Marking text...');
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const processedUri = await processPhotoWithText(result.assets[0].uri, locationText, timestamp);
+      setPhotos([...photos, processedUri]);
+    }
+
+    // 6. simpan ke media library
+    console.log('Saving to media library...');
+    const asset = result.assets && result.assets[0] ? await MediaLibrary.createAssetAsync(result.assets[0].uri) : null;
+    console.log('asset', asset);
+  }
+
+
+
+{/* test foto with timestamp & location */}
+{/* <TouchableOpacity
+  onPress={handleTestPhoto}
+  className="items-center px-8 py-4 mb-4 bg-[#059669] rounded-full"
+  activeOpacity={0.7}
+>
+  <Text className="text-xl font-bold text-white">Ambil Foto</Text>
+</TouchableOpacity>
+{photos.map((photoUri, index) => (
+  <Image key={index} source={{ uri: photoUri.stampedUri }} style={{ width: 200, height: 200, margin: 5 }} />
+))} */}
+{/* test foto with timestamp & location */}

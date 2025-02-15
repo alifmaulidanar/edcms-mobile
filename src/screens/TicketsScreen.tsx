@@ -447,29 +447,32 @@ const TicketsScreen = () => {
                   {photos.length === 0 ? (
                     <Text className="text-gray-500">-</Text>
                   ) : (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-                      {photos.map((photo, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          onPress={() => setPreviewPhoto(photo.url)}
-                          style={{
-                            width: "50%",
-                            aspectRatio: 1,
-                            borderRadius: 8,
-                            overflow: "hidden",
-                            backgroundColor: "#f3f4f6",
-                            borderWidth: 1,
-                            borderColor: "#e5e7eb",
-                          }}
-                        >
-                          <Image
-                            source={{ uri: photo.url }}
-                            style={{ width: "100%", height: "100%" }}
-                            resizeMode="cover"
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <ScrollView style={{ maxHeight: 370 }} showsVerticalScrollIndicator={true}>
+
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+                        {photos.map((photo, index) => (
+                          <TouchableOpacity
+                            key={index}
+                            onPress={() => setPreviewPhoto(photo.url)}
+                            style={{
+                              width: "50%",
+                              aspectRatio: 1,
+                              borderRadius: 8,
+                              overflow: "hidden",
+                              backgroundColor: "#f3f4f6",
+                              borderWidth: 1,
+                              borderColor: "#e5e7eb",
+                            }}
+                          >
+                            <Image
+                              source={{ uri: photo.url }}
+                              style={{ width: "100%", height: "100%" }}
+                              resizeMode="cover"
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
                   )}
                 </View>
 

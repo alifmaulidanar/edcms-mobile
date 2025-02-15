@@ -2,7 +2,7 @@
   "expo": {
     "name": "PastiMS",
     "slug": "pastims",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/logo/mdm-logo.png",
     "userInterfaceStyle": "light",
@@ -26,6 +26,9 @@
     },
     "android": {
       "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.FOREGROUND_SERVICE",
@@ -34,9 +37,6 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION"
-        // "android.permission.ACCESS_WIFI_STATE",
-        // "android.permission.CHANGE_WIFI_STATE",
-        // "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo/mdm-logo.png",
@@ -71,34 +71,24 @@
       [
         "expo-media-library",
         {
-          // "photosPermission": "Allow $(PRODUCT_NAME) to access your photos.",
-          // "isAccessMediaLocationEnabled": true,
           "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos."
         }
       ],
       [
         "react-native-radar",
         {
-          // boolean to enable iOS fraud detection, defaults to false
           "iosFraud": true,
-          // string used in iOS NSLocationWhenInUseUsageDescription prompt, required for foreground location permissions
           "iosNSLocationWhenInUseUsageDescription": "Your foreground location usage description.",
-          // string used in iOS NSLocationAlwaysAndWhenInUseUsageDescription prompt, required for background location permissions
           "iosNSLocationAlwaysAndWhenInUseUsageDescription": "Your background location usage description.",
-          // boolean to enable iOS background location mode, required for .presetContinuous and .presetResponsive, defaults to false
           "iosBackgroundMode": true,
-          // boolean to enable Android fraud detection, defaults to false
           "androidFraud": true,
-          // boolean to enable Android background location permissions, defaults to false 
           "androidBackgroundPermission": true,
-          // boolean to enable Android foreground location permissions, defaults to false
           "androidFineLocationPermission": true,
-          // boolean to enable motion activity detection, defaults to false
           "addRadarSDKMotion": true,
-          // string used in iOS NSMotionUsageDescription prompt, defaults to "This app uses the motion service to provide motion-based services."
           "iosNSMotionUsageDescription": "Your motion usage description."
         }
-      ]
+      ],
+      "react-native-image-marker"
     ]
   }
 }

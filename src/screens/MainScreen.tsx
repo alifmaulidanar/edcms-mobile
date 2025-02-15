@@ -1,5 +1,6 @@
 import moment from "moment-timezone";
 import { RootState } from '../store';
+// import * as Location from "expo-location";
 import { useSelector } from 'react-redux';
 import { getTickets } from '../api/tickets';
 import { Geofence, Ticket } from '../types';
@@ -14,6 +15,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator } from "react-native";
+// import { getLocationAddress } from "../components/ImageTimestampAndLocation";
+
+const requiredPhotoCount = parseInt(process.env.EXPO_PUBLIC_REQUIRED_PHOTO_COUNT);
 
 type RootStackParamList = {
   Login: undefined;
@@ -51,6 +55,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
+
+  useEffect(() => {
+    // AsyncStorage.removeItem("pendingUploads");
+    // const queue = AsyncStorage.getItem("pendingUploads");
+    const interval = setInterval(uploadPendingPhotos, 120000); // Cek setiap 2 menit
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch tickets dari API
   const fetchTickets = useCallback(async () => {
@@ -121,11 +132,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
       return;
     }
-    if (photos.length < 4) {
+    if (photos.length < requiredPhotoCount) {
       setPhotoModalVisible(true);
       return;
     }
-    await handleUploadPhotos();
   };
 
   // Handle Stop Tracking (Finish Trip)
@@ -262,17 +272,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const handleTakePhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      // allowsEditing: true,
       quality: 1,
     });
 
-    if (!result.canceled) {
-      if (photos.length < 4) {
-        if (result.assets && result.assets.length > 0) {
-          setPhotos([...photos, result.assets[0].uri]);
-        }
+    if (!result.canceled && result.assets.length > 0) {
+      const photoUri = result.assets[0].uri;
+
+      if (photos.length < requiredPhotoCount) {
+        setPhotos([...photos, photoUri]);
       } else {
-        Alert.alert("Limit Exceeded", "You can only upload up to 4 photos.");
+        Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
       }
     }
   };
@@ -301,72 +310,109 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  // Handle upload photos
-  const handleUploadPhotos = async () => {
-    const ticket_id = currentTicketID || selectedTicket?.ticket_id;
-    const user_id = userData?.user_id || '';
-    if (typeof ticket_id !== 'string') {
-      console.error('Invalid ticket_id:', ticket_id);
-      Alert.alert('Kesalahan', 'ticket_id tidak valid.');
-      return;
-    }
-
-    if (user_id === '') {
-      console.error('Invalid user_id:', user_id);
-      Alert.alert('Kesalahan', 'user_id tidak valid.');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-    setUploadMessage("Memulai proses unggah...");
-
+  // Handle saving photos locally
+  const savePhotoLocally = async (photoUris: string[], ticketId: string, userId: string) => {
     try {
-      const formData = new FormData();
-      const totalSteps = photos.length * 2;
-      let currentStep = 0;
-
-      // Compress and append photos to FormData (~200KB each)
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i];
-        setUploadMessage(`Mengompresi foto ${i + 1}...`);
-        const compressedUri = await compressImage(photo);
-        const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
-        const photoBlob = {
-          uri: compressedUri,
-          type: "image/jpeg",
-          name: `${ticket_id}-${timestamp}-${i + 1}.jpg`,
-        } as any;
-        formData.append("photos", photoBlob);
-        currentStep++;
-        setUploadProgress(Math.round((currentStep / totalSteps) * 100));
+      const storedData = await AsyncStorage.getItem("pendingUploads");
+      let pendingUploads = storedData ? JSON.parse(storedData) : [];
+      if (!Array.isArray(pendingUploads)) {
+        pendingUploads = [];
       }
 
-      setUploadMessage(`Mengunggah semua foto...`);
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "multipart/form-data",
-          "user_id": user_id,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        console.log({ response });
-        console.error("Error uploading photo:", response.statusText);
-        throw new Error("Foto gagal diunggah.");
+      let ticketData = pendingUploads.find((item: any) => item.ticket_id === ticketId);
+      if (!ticketData) {
+        ticketData = { ticket_id: ticketId, user_id: userId, photos: [] };
+        pendingUploads.push(ticketData);
       }
 
-      setUploadMessage("Semua foto berhasil diunggah.");
-      setUploadProgress(100);
-      await handleStop();
+      ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
+      await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
+      console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
     } catch (error) {
-      console.error("Error uploading photos:", error);
-      Alert.alert("Error", (error as Error).message);
-    } finally {
-      setIsUploading(false);
-      setPhotoModalVisible(false);
+      console.error("❌ Error saving photos locally:", error);
+    }
+  };
+
+  // Background photo upload
+  const uploadPendingPhotos = async () => {
+    try {
+      const storedData = await AsyncStorage.getItem("pendingUploads");
+      let pendingUploads = storedData ? JSON.parse(storedData) : [];
+      if (!Array.isArray(pendingUploads) || pendingUploads.length === 0) {
+        console.log("📭 Tidak ada foto yang perlu diunggah.");
+        return;
+      }
+
+      // console.log(`📦 Queue saat ini:`, JSON.stringify(pendingUploads, null, 2));
+      for (let i = 0; i < pendingUploads.length; i++) {
+        const { ticket_id, user_id, photos } = pendingUploads[i];
+        if (!ticket_id || !user_id || !Array.isArray(photos) || photos.length !== requiredPhotoCount) {
+          console.error(`❌ Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
+          continue;
+        }
+
+        // console.log(`🟢 Mengunggah foto untuk tiket ${ticket_id}...`);
+        const formData = new FormData();
+        let isSuccess = true;
+
+        for (let j = 0; j < photos.length; j++) {
+          try {
+            // console.log(`🔵 [${ticket_id}] Mengompresi foto ${j + 1} dari ${requiredPhotoCount}...`);
+            const compressedUri = await compressImage(photos[j]);
+            const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
+            formData.append("photos", {
+              uri: compressedUri,
+              type: "image/jpeg",
+              name: `${ticket_id}-${timestamp}-${j + 1}.jpg`,
+            } as any);
+            // console.log(`✅ [${ticket_id}] Kompresi foto ${j + 1} selesai.`);
+          } catch (error) {
+            console.error(`❌ [${ticket_id}] Gagal mengompresi foto ${j + 1}:`, error);
+            isSuccess = false;
+            break; // **Hentikan proses jika ada kegagalan**
+          }
+        }
+
+        if (!isSuccess) {
+          console.error(`⚠️ [${ticket_id}] Proses dihentikan karena kegagalan.`);
+          continue;
+        }
+
+        // console.log(`🚀 [${ticket_id}] Mengunggah semua foto ke server...`);
+        try {
+          const response = await fetch(
+            `${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "multipart/form-data",
+                "user_id": user_id,
+              },
+              body: formData,
+            }
+          );
+
+          if (response.ok) {
+            console.log(`✅ [${ticket_id}] Semua foto berhasil diunggah.`);
+            pendingUploads.splice(i, 1);
+            await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
+            console.log(`🗑️ [${ticket_id}] Tiket dihapus dari antrian.`);
+            i--;
+          } else {
+            console.error(`❌ [${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
+          }
+        } catch (error) {
+          console.error(`❌ [${ticket_id}] Error saat mengunggah:`, error);
+        }
+      }
+
+      if (pendingUploads.length === 0) {
+        console.log("✅ Semua tiket sudah diunggah. Antrian kosong.");
+      } else {
+        console.log(`⏳ Masih ada ${pendingUploads.length} tiket dalam antrian.`);
+      }
+    } catch (error) {
+      console.error("❌ Error dalam background upload:", error);
     }
   };
 
@@ -424,46 +470,55 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
           <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
             <Text className="mb-2 text-lg font-bold">Ambil Bukti Foto.</Text>
-            <Text className="mb-4 text-gray-500">Ambil 4 foto untuk menyelesaikan tiket.</Text>
+            <Text className="mb-4 text-gray-500">Ambil {requiredPhotoCount} foto untuk menyelesaikan tiket.</Text>
 
             {/* Photo Grid */}
-            <View className="flex flex-row flex-wrap justify-between gap-2 mb-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <View
-                  key={index}
-                  className="relative overflow-hidden bg-gray-100 border border-gray-300 rounded-md"
-                  style={{ width: "48%", aspectRatio: 1 }}
-                >
-                  {photos[index] ? (
-                    <TouchableOpacity
-                      onPress={() => handlePreviewPhoto(photos[index])}
-                    >
-                      <Image
-                        source={{ uri: photos[index] }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
+            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={true}>
+              <View className="flex flex-row flex-wrap justify-between gap-2 mb-4">
+                {Array.from({ length: requiredPhotoCount }).map((_, index) => (
+                  <View
+                    key={index}
+                    className="relative overflow-hidden bg-gray-100 border border-gray-300 rounded-md"
+                    style={{ width: "48%", aspectRatio: 1 }}
+                  >
+                    {photos[index] ? (
                       <TouchableOpacity
-                        onPress={() => handleDeletePhoto(index)}
-                        className="absolute p-1 bg-red-500 rounded-full top-2 right-2"
+                        onPress={() => handlePreviewPhoto(photos[index])}
                       >
-                        <Ionicons name="trash" size={20} color="white" />
+                        <Image
+                          source={{ uri: photos[index] }}
+                          style={{ width: "100%", height: "100%" }}
+                          resizeMode="cover"
+                        />
+                        <TouchableOpacity
+                          onPress={() => handleDeletePhoto(index)}
+                          className="absolute p-1 bg-red-500 rounded-full top-2 right-2"
+                        >
+                          <Ionicons name="trash" size={20} color="white" />
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    </TouchableOpacity>
-                  ) : (
-                    <Text className="text-center text-gray-400">Tidak ada foto</Text>
-                  )}
-                </View>
-              ))}
-            </View>
+                    ) : (
+                      <Text className="text-center text-gray-400">Tidak ada foto</Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
 
             {/* Action Button */}
-            {photos.length === 4 ? (
+            {photos.length === requiredPhotoCount ? (
               <TouchableOpacity
-                onPress={handleUploadPhotos}
-                className="items-center px-8 py-4 mb-4 bg-blue-500 rounded-full"
+                onPress={async () => {
+                  if (!selectedTicket || !userData) return;
+                  console.log("📥 Menyimpan semua foto ke daftar pending upload...");
+                  await savePhotoLocally(photos, selectedTicket.ticket_id, userData.user_id);
+                  setPhotos([]);
+                  handleStop();
+                  setUploadMessage("Foto akan diunggah di latar belakang aplikasi dalam beberapa saat.");
+                  setPhotoModalVisible(false);
+                }}
+                className="items-center px-8 py-4 my-4 bg-blue-500 rounded-full"
                 activeOpacity={0.7}
-                disabled={isUploading}
               >
                 {isUploading ? (
                   <ActivityIndicator color="white" />
@@ -690,7 +745,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 <TouchableOpacity
                   onPress={() => {
                     setIsConfirmationVisible(false);
-                    handleStart(); // Panggil fungsi handleStart
+                    handleStart();
                   }}
                   className="px-6 py-3 bg-blue-500 rounded-lg"
                 >
