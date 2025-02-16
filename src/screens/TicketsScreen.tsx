@@ -558,7 +558,7 @@ const TicketsScreen = () => {
                   if (status !== 'granted') {
                     Alert.alert(
                       'Izin Ditolak',
-                      'Aplikasi memerlukan izin untuk menyimpan gambar ke galeri.'
+                      'Aplikasi meminta izin untuk menyimpan gambar ke galeri.'
                     );
                     return;
                   }

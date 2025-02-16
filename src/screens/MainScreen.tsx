@@ -5,7 +5,6 @@ import { getTickets } from '../api/tickets';
 import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
-// import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from 'expo-media-library';
 import { getAllGeofences } from '../api/geofences';
@@ -16,7 +15,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator } from "react-native";
-// import { getLocationAddress } from "../components/ImageTimestampAndLocation";
 
 const requiredPhotoCount = parseInt(process.env.EXPO_PUBLIC_REQUIRED_PHOTO_COUNT);
 
@@ -151,7 +149,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setSelectedTicket(null);
         setTime(0);
         setUploadProgress(0);
-        setUploadMessage("");
         Alert.alert("Sukses", "Foto berhasil diunggah.");
         setIsUploading(false);
         setPhotoModalVisible(false);
@@ -518,11 +515,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               <TouchableOpacity
                 onPress={async () => {
                   if (!selectedTicket || !userData) return;
-                  console.log("📥 Menyimpan semua foto ke daftar pending upload...");
+                  setIsUploading(true);
                   await savePhotoLocally(photos, selectedTicket.ticket_id, userData.user_id);
-                  setPhotos([]);
                   handleStop();
-                  setUploadMessage("Foto akan diunggah di latar belakang aplikasi dalam beberapa saat.");
                 }}
                 className="items-center px-8 py-4 my-4 bg-blue-500 rounded-full"
                 activeOpacity={0.7}

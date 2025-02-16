@@ -187,6 +187,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       <Text className="mt-4 text-center text-gray-600">
         Versi: {appVersion}
       </Text>
+      <View className="flex justify-center mx-12 my-8 text-center text-gray-600">
+        <Text className="mb-6 text-sm text-center">Jangan keluar dari akun Anda tanpa instruksi dari Admin.</Text>
+        <Text className="mb-6 text-sm text-center">Keluar dari akun Anda dapat menyebabkan tiket dan foto tidak tersimpan dan rusak. Hindari risiko ini dengan tidak keluar dari akun Anda dan tidak mencopot (<Text className="italic">uninstall</Text>) aplikasi ini.</Text>
+      </View>
 
       {/* Logout Confirmation Modal */}
       {visible && (
@@ -198,8 +202,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         >
           <View className="items-center justify-center flex-1 bg-black bg-opacity-50">
             <View className="p-6 bg-white rounded-lg w-80">
-              <Text className="mb-4 text-xl text-center">Konfirmasi Logout</Text>
-              <Text className="mb-6 text-center">Apakah yakin ingin logout?</Text>
+              <Text className="mb-4 text-xl text-center">Apakah yakin ingin logout?</Text>
+              <Text className="mb-6 text-center">Jangan keluar dari akun Anda tanpa instruksi dari Admin.</Text>
+              <Text className="mb-6 text-center">Keluar dari akun Anda dapat menyebabkan tiket dan foto tidak tersimpan dan rusak. Hindari risiko ini dengan tidak keluar dari akun Anda dan tidak mencopot (<Text className="italic">uninstall</Text>) aplikasi ini.</Text>
               <View className="flex-row justify-between">
                 <TouchableOpacity
                   onPress={hideDialog}
