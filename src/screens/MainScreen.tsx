@@ -5,14 +5,15 @@ import { getTickets } from '../api/tickets';
 import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from "expo-image-picker";
-import * as MediaLibrary from 'expo-media-library';
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import React, { useState, useEffect, useCallback } from "react";
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
+import { requestPermissionsAsync, saveToLibraryAsync } from 'expo-media-library';
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator } from "react-native";
 
@@ -28,10 +29,10 @@ type RootStackParamList = {
 type Props = NativeStackScreenProps<RootStackParamList, "Main">;
 
 const compressImage = async (uri: string) => {
-  const manipResult = await ImageManipulator.manipulateAsync(
+  const manipResult = await manipulateAsync(
     uri,
     [{ resize: { width: 800 } }], // Resize to a width of 800px
-    { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG } // Compress to 50%
+    { compress: 0.5, format: SaveFormat.JPEG, base64: true }, // Compress to 50%
   );
   return manipResult.uri;
 };
@@ -56,8 +57,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const userData = useSelector((state: RootState) => state.user);
 
   useEffect(() => {
-    // AsyncStorage.removeItem("pendingUploads");
-    // const queue = AsyncStorage.getItem("pendingUploads");
+    AsyncStorage.removeItem("pendingUploads");
+    const queue = AsyncStorage.getItem("pendingUploads");
     const interval = setInterval(uploadPendingPhotos, 120000); // Cek setiap 2 menit
     return () => clearInterval(interval);
   }, []);
@@ -268,14 +269,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   // Handle picking photo
   const handleTakePhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    const result = await launchCameraAsync({
+      mediaTypes: MediaTypeOptions.Images,
       quality: 1,
+      aspect: [1, 1]
     });
 
     if (!result.canceled && result.assets.length > 0) {
       const photoUri = result.assets[0].uri;
-
       if (photos.length < requiredPhotoCount) {
         setPhotos([...photos, photoUri]);
       } else {
@@ -285,9 +286,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // Handle photo preview
-  const handlePreviewPhoto = (uri: string) => {
-    setPreviewPhoto(uri);
-  };
+  const handlePreviewPhoto = (uri: string) => { setPreviewPhoto(uri) };
 
   // Handle delete photo
   const handleDeletePhoto = (index: number) => {
@@ -325,7 +324,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
       await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
-      console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
+      // console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
     } catch (error) {
       console.error("❌ Error saving photos locally:", error);
     }
@@ -334,56 +333,71 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // Background photo upload
   const uploadPendingPhotos = async () => {
     try {
-      const storedData = await AsyncStorage.getItem("pendingUploads");
+      let storedData = await AsyncStorage.getItem("pendingUploads");
       let pendingUploads = storedData ? JSON.parse(storedData) : [];
       if (!Array.isArray(pendingUploads) || pendingUploads.length === 0) {
         // console.log("📭 Tidak ada foto yang perlu diunggah.");
         return;
       }
 
-      // console.log(`📦 Queue saat ini:`, JSON.stringify(pendingUploads, null, 2));
+      // console.log(`📦 Jumlah tiket dalam antrian: ${pendingUploads.length}`);
+      let updatedUploads = [...pendingUploads]; // Salinan array untuk diubah
       for (let i = 0; i < pendingUploads.length; i++) {
         const { ticket_id, user_id, photos } = pendingUploads[i];
         if (!ticket_id || !user_id || !Array.isArray(photos) || photos.length !== requiredPhotoCount) {
-          console.error(`❌ Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
+          // console.error(`⚠️ Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
           continue;
         }
 
-        // console.log(`🟢 Mengunggah foto untuk tiket ${ticket_id}...`);
+        // console.log(`🚀 Memproses tiket ${ticket_id} dengan ${photos.length} foto.`);
         const formData = new FormData();
         let isSuccess = true;
-
         for (let j = 0; j < photos.length; j++) {
           try {
-            // console.log(`🔵 [${ticket_id}] Mengompresi foto ${j + 1} dari ${requiredPhotoCount}...`);
             const compressedUri = await compressImage(photos[j]);
             const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
             const fileName = `${ticket_id}-${timestamp}-${j + 1}.jpg`;
+            let timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName);
+            let retryCount = 0;
+
+            while (!timestampedPhoto && retryCount < 3) {
+              // console.log(`🔄 Menunggu ulang timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName);
+              retryCount++;
+            }
+
+            if (!timestampedPhoto) {
+              console.error(`❌ Gagal menambahkan timestamp ke foto ${fileName}.`);
+              isSuccess = false;
+              break;
+            }
+
             formData.append("photos", {
-              uri: compressedUri,
+              uri: timestampedPhoto,
               type: "image/jpeg",
               name: fileName,
             } as any);
-            // console.log(`✅ [${ticket_id}] Kompresi foto ${j + 1} selesai.`);
-            const { status } = await MediaLibrary.requestPermissionsAsync();
-            if (status === 'granted') {
-              await MediaLibrary.saveToLibraryAsync(compressedUri);
+
+            const { status } = await requestPermissionsAsync();
+            if (status === "granted") {
+              await saveToLibraryAsync(timestampedPhoto);
             } else {
-              console.log('Permission denied for saving to media library');
+              console.log("🚫 Izin untuk menyimpan ke galeri ditolak.");
             }
           } catch (error) {
-            console.error(`❌ [${ticket_id}] Gagal mengompresi foto ${j + 1}:`, error);
+            console.error(`❌ Gagal memproses foto ${j + 1} untuk tiket ${ticket_id}:`, error);
             isSuccess = false;
             break;
           }
         }
 
         if (!isSuccess) {
-          console.error(`⚠️ [${ticket_id}] Proses dihentikan karena kegagalan.`);
+          // console.log(`⚠️ Tiket ${ticket_id} tidak dapat diproses, akan dicoba lagi nanti.`);
           continue;
         }
 
-        // console.log(`🚀 [${ticket_id}] Mengunggah semua foto ke server...`);
+        // console.log(`📤 Mengunggah semua foto untuk tiket ${ticket_id}...`);
         try {
           const response = await fetch(
             `${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`,
@@ -398,23 +412,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           );
 
           if (response.ok) {
-            console.log(`✅ [${ticket_id}] Semua foto berhasil diunggah.`);
-            pendingUploads.splice(i, 1);
-            await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
-            console.log(`🗑️ [${ticket_id}] Tiket dihapus dari antrian.`);
-            i--;
+            // console.log(`✅ [${ticket_id}] Semua foto berhasil diunggah.`);
+            updatedUploads = updatedUploads.filter(item => item.ticket_id !== ticket_id);
+            await AsyncStorage.setItem("pendingUploads", JSON.stringify(updatedUploads));
+            // console.log(`🗑️ [${ticket_id}] Tiket dihapus dari antrian.`);
           } else {
             console.error(`❌ [${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
           }
         } catch (error) {
           console.error(`❌ [${ticket_id}] Error saat mengunggah:`, error);
         }
-      }
-
-      if (pendingUploads.length === 0) {
-        console.log("✅ Semua tiket sudah diunggah. Antrian kosong.");
-      } else {
-        console.log(`⏳ Masih ada ${pendingUploads.length} tiket dalam antrian.`);
       }
     } catch (error) {
       console.error("❌ Error dalam background upload:", error);
@@ -468,9 +475,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         visible={photoModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => {
-          if (!isUploading) setPhotoModalVisible(false);
-        }}
+        onRequestClose={() => { if (!isUploading) setPhotoModalVisible(false) }}
       >
         <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
           <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
@@ -632,9 +637,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
           {tracking && (
-            <Text className="mb-4 text-xl text-center">
-              {formatTime(time)}
-            </Text>
+            <Text className="mb-4 text-xl text-center">{formatTime(time)}</Text>
           )}
 
           {/* Idle */}
@@ -698,9 +701,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
             activeOpacity={0.7}
           >
-            <Text className="text-xl font-bold text-white">
-              Batalkan
-            </Text>
+            <Text className="text-xl font-bold text-white">Batalkan</Text>
           </TouchableOpacity>
         )}
       </View>

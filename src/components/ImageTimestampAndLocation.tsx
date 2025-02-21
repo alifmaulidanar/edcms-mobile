@@ -1,33 +1,153 @@
-import { ImageManipulator } from "expo-image-manipulator";
+import moment from 'moment-timezone';
+import * as Location from 'expo-location';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { Skia, FontStyle, PaintStyle } from '@shopify/react-native-skia';
+import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType } from 'expo-file-system';
 
-export const getLocationAddress = async (latitude: number, longitude: number) => {
-  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-  const data = await response.json();
-  return data.address;
+// 🔍 Fungsi untuk membaca file lokal sebagai Base64
+const loadImageAsBase64 = async (uri: string) => {
+  try {
+    console.log('📂 Membaca file gambar sebagai Base64:', uri);
+    const base64Data = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
+    if (!base64Data) throw new Error('Base64 kosong atau tidak valid.');
+    return base64Data;
+  } catch (error) {
+    console.error('❌ Gagal membaca file gambar:', error);
+    return null;
+  }
 };
 
-export const processPhotoWithText = async (uri: string, locationText: string, timestamp: string) => {
+export const getUserLocationInfo = async () => {
   try {
-    const manipulatedImage = await ImageManipulator.manipulateAsync(
-      uri,
-      [
-        {
-          drawText: {
-            text: `${timestamp}\n${locationText}`,
-            position: { x: 10, y: 10 }, // Posisi teks di kanan bawah
-            color: "#FFFFFF", // Warna teks putih
-            backgroundColor: "rgba(0,0,0,0.5)", // Latar belakang semi-transparan
-            fontSize: 24,
-            fontWeight: "bold"
-          }
-        }
-      ],
-      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+    console.log('📍 Mendapatkan informasi lokasi pengguna...');
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      console.warn('Izin lokasi ditolak');
+      return null;
+    }
+    const location = await Location.getCurrentPositionAsync({});
+    const { latitude, longitude } = location.coords;
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36' } }
     );
 
-    return manipulatedImage.uri;
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    const address = data.address;
+    console.log('📍 Informasi lokasi:', address);
+    if (!address) {
+      console.error('Alamat tidak ditemukan dalam hasil data');
+      return null;
+    }
+    return {
+      latitude,
+      longitude,
+      jalan: address.road || '-',
+      kelurahan: address.neighbourhood || '-',
+      kecamatan: address.suburb || '-',
+      kota: address.city || '-',
+      provinsi: address.region || '-',
+      kode_pos: address.postcode || '-',
+      negara: address.country || '-',
+    }
   } catch (error) {
-    console.error("Error processing photo:", error);
-    return uri; // Kembalikan URI asli jika terjadi kesalahan
+    console.error('Gagal mendapatkan lokasi:', error);
+    return null;
+  }
+};
+
+const getUserLocationWithRetry = async (maxRetries = 3, delay = 5000) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📍 Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
+      const userInfo = await getUserLocationInfo();
+      if (userInfo) return userInfo;
+    } catch (error) {
+      console.error(`⚠️ Gagal mendapatkan lokasi (Percobaan ${attempt}):`, error);
+    }
+    console.log(`🕒 Menunggu ${delay / 1000} detik sebelum mencoba lagi...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  console.error('❌ Gagal mendapatkan lokasi setelah beberapa percobaan.');
+  return null;
+};
+
+// Timestamp and Location
+export const addTimestampToPhoto = async (photoUri: string, fileName: string) => {
+  try {
+    let userInfo = await getUserLocationWithRetry();
+    if (!userInfo) {
+      console.warn('⚠️ Tidak bisa mendapatkan lokasi, menunda proses.');
+      return null;
+    }
+
+    const timestampText = [
+      `${moment().format('DD MMM YYYY HH:mm:ss')}`,
+      `${userInfo.latitude}, ${userInfo.longitude}`,
+      `${userInfo.jalan}`,
+      `${userInfo.kelurahan}`,
+      `${userInfo.kecamatan}`,
+      `${userInfo.kota}`,
+      `${userInfo.kode_pos}`,
+      `${userInfo.provinsi}`,
+      `${userInfo.negara}`
+    ];
+
+    // 1. Image Dimensions
+    const { width: imgWidth, height: imgHeight } = await manipulateAsync(
+      photoUri,
+      [],
+      { format: SaveFormat.JPEG }
+    );
+
+    // 2. Skia Surface & Canvas
+    const surface = Skia.Surface.Make(imgWidth, imgHeight);
+    if (!surface) return photoUri;
+    const canvas = surface.getCanvas();
+
+    // 3. Load Image
+    const base64Data = photoUri.startsWith('file://') ? await loadImageAsBase64(photoUri) : photoUri.split('base64,')[1];
+    if (!base64Data) return photoUri;
+    const skData = Skia.Data.fromBase64(base64Data);
+    const img = Skia.Image.MakeImageFromEncoded(skData);
+    if (!img) return photoUri;
+
+    // 4. Canvas Draw Image
+    canvas.drawImage(img, 0, 0);
+
+    // 5. Text Paint & Font
+    const margin = imgWidth * 0.02; // 2% from image width
+    const fontSize = imgWidth * 0.04; // 4% from image width
+    const lineHeight = fontSize * 1.2;
+    const fontMgr = Skia.FontMgr.System();
+    const typeface = fontMgr.matchFamilyStyle('Helvetica', FontStyle.Bold);
+    const font = Skia.Font(typeface, fontSize);
+    const paint = Skia.Paint();
+    paint.setColor(Skia.Color('white'));
+    paint.setStyle(PaintStyle.Fill);
+    paint.setStrokeWidth(1);
+
+    // 6. Text Position
+    let yPos = imgHeight - margin;
+    const textX = imgWidth - margin;
+
+    // 7. Draw Text
+    timestampText.reverse().forEach(line => {
+      const textWidth = font.measureText(line).width;
+      const x = textX - textWidth;
+      canvas.drawText(line, x, yPos, paint, font);
+      yPos -= lineHeight;
+    });
+
+    // 8. Save
+    const snapshot = surface.makeImageSnapshot();
+    if (!snapshot) return photoUri;
+    const newImageBase64 = snapshot.encodeToBase64();
+    const fileUri = `${documentDirectory}${fileName}`;
+    await writeAsStringAsync(fileUri, newImageBase64, { encoding: EncodingType.Base64 });
+    return fileUri;
+  } catch (error) {
+    console.error('Error adding timestamp:', error);
+    return photoUri;
   }
 };
