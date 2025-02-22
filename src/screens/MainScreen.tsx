@@ -57,8 +57,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const userData = useSelector((state: RootState) => state.user);
 
   useEffect(() => {
-    AsyncStorage.removeItem("pendingUploads");
-    const queue = AsyncStorage.getItem("pendingUploads");
+    // AsyncStorage.removeItem("pendingUploads");
+    // const queue = AsyncStorage.getItem("pendingUploads");
     const interval = setInterval(uploadPendingPhotos, 120000); // Cek setiap 2 menit
     return () => clearInterval(interval);
   }, []);
@@ -272,7 +272,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     const result = await launchCameraAsync({
       mediaTypes: MediaTypeOptions.Images,
       quality: 1,
-      aspect: [1, 1]
     });
 
     if (!result.canceled && result.assets.length > 0) {
