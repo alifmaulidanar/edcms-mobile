@@ -1,6 +1,5 @@
 import { generateId } from './utils';
 import Radar from 'react-native-radar';
-import 'react-native-get-random-values';
 import { updateTicket } from '../api/tickets';
 import { createTrip, getTrip, getTripIdByTicketId, updateTrip } from '../api/trip';
 
@@ -199,10 +198,7 @@ const listenForLocationUpdates = () => {
 
 export {
   initializeRadar,
-  requestLocationPermissions,
-  trackLocationOnce,
   startBackgroundTracking,
   stopBackgroundTracking,
   cancelTrip,
-  listenForLocationUpdates,
 };

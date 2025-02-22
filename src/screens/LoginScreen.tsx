@@ -2,11 +2,11 @@ import { setUser } from "../store";
 import { login } from "../api/auth";
 import Constants from "expo-constants";
 import { useDispatch } from "react-redux";
-import * as Location from 'expo-location';
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import LocationPermissionModal from "../components/LocationPermission";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { getBackgroundPermissionsAsync, getForegroundPermissionsAsync } from 'expo-location';
 import { View, Text, TextInput, Button, Alert, Platform, Linking, Image, TouchableOpacity } from "react-native";
 
 type RootStackParamList = {
@@ -47,8 +47,8 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     const checkPermissions = async () => {
-      const { status: foreground } = await Location.getForegroundPermissionsAsync();
-      const { status: background } = await Location.getBackgroundPermissionsAsync();
+      const { status: foreground } = await getForegroundPermissionsAsync();
+      const { status: background } = await getBackgroundPermissionsAsync();
       if (foreground === 'granted' && background === 'granted') {
         setPermissionsGranted(true);
       } else {

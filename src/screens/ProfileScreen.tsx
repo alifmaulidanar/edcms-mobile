@@ -1,7 +1,7 @@
 import { Profile } from "../types";
 import Constants from "expo-constants";
-import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
+import { setStringAsync } from "expo-clipboard";
 import { getProfile, logout } from "../api/auth";
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -52,7 +52,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const copyToClipboard = (text: string) => {
-    Clipboard.setStringAsync(text);
+    setStringAsync(text);
     alert("ID pengguna telah disalin ke clipboard!");
   };
 

@@ -1,6 +1,6 @@
-import * as Location from 'expo-location';
 import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, Alert, Linking, TouchableOpacity } from 'react-native';
+import { getBackgroundPermissionsAsync, getForegroundPermissionsAsync, requestBackgroundPermissionsAsync, requestForegroundPermissionsAsync } from 'expo-location';
 
 // Props for the component
 interface LocationPermissionModalProps {
@@ -15,10 +15,9 @@ const LocationPermissionModal: React.FC<LocationPermissionModalProps> = ({ onPer
 
   // Function to check permissions
   const checkPermissions = async () => {
-    const { status: foreground } = await Location.getForegroundPermissionsAsync();
+    const { status: foreground } = await getForegroundPermissionsAsync();
     setForegroundStatus(foreground);
-
-    const { status: background } = await Location.getBackgroundPermissionsAsync();
+    const { status: background } = await getBackgroundPermissionsAsync();
     setBackgroundStatus(background);
 
     if (foreground === 'granted' && background === 'granted') {
@@ -31,9 +30,9 @@ const LocationPermissionModal: React.FC<LocationPermissionModalProps> = ({ onPer
 
   useEffect(() => {
     const checkPermissions = async () => {
-      const { status: foreground } = await Location.getForegroundPermissionsAsync();
+      const { status: foreground } = await getForegroundPermissionsAsync();
       setForegroundStatus(foreground);
-      const { status: background } = await Location.getBackgroundPermissionsAsync();
+      const { status: background } = await getBackgroundPermissionsAsync();
       setBackgroundStatus(background);
       if (foreground !== 'granted' || background !== 'granted') {
         setModalVisible(true);
@@ -46,7 +45,7 @@ const LocationPermissionModal: React.FC<LocationPermissionModalProps> = ({ onPer
 
   // Function to request foreground permission
   const requestForegroundPermission = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = await requestForegroundPermissionsAsync();
     setForegroundStatus(status);
     if (status === 'denied') {
       Alert.alert(
@@ -64,7 +63,7 @@ const LocationPermissionModal: React.FC<LocationPermissionModalProps> = ({ onPer
 
   // Function to request background permission
   const requestBackgroundPermission = async () => {
-    const { status } = await Location.requestBackgroundPermissionsAsync();
+    const { status } = await requestBackgroundPermissionsAsync();
     setBackgroundStatus(status);
     if (status === 'denied') {
       Alert.alert(
@@ -80,9 +79,7 @@ const LocationPermissionModal: React.FC<LocationPermissionModalProps> = ({ onPer
     }
   };
 
-  const handleCloseModal = () => {
-    setModalVisible(false);
-  };
+  const handleCloseModal = () => { setModalVisible(false) };
 
   return (
     <View className="items-center justify-center px-6 pt-6 bg-transparent">

@@ -1,5 +1,5 @@
 // User type definition
-export interface User {
+interface User {
   id: string;
   user_id: string;
   email: string;

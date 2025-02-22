@@ -1,19 +1,19 @@
 import { RootState } from "../store";
 import { useSelector } from "react-redux";
 import { Geofence, Ticket } from "../types";
-import * as Clipboard from "expo-clipboard";
+import { setStringAsync } from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from 'expo-file-system';
 import { getAllGeofences } from "../api/geofences";
-import * as MediaLibrary from 'expo-media-library';
 import { Picker } from "@react-native-picker/picker";
 import { getSingleTicket, getTickets } from "../api/tickets";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
+import { downloadAsync, documentDirectory } from 'expo-file-system';
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
 import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert, TextInput } from "react-native";
 
 const copyToClipboard = (text: string) => {
-  Clipboard.setStringAsync(text);
+  setStringAsync(text);
   alert("ID telah disalin ke clipboard!");
 };
 
@@ -554,7 +554,7 @@ const TicketsScreen = () => {
               <TouchableOpacity
                 className="items-center px-8 py-3 bg-gray-300 rounded-lg"
                 onPress={async () => {
-                  const { status } = await MediaLibrary.requestPermissionsAsync();
+                  const { status } = await requestPermissionsAsync();
                   if (status !== 'granted') {
                     Alert.alert(
                       'Izin Ditolak',
@@ -564,9 +564,9 @@ const TicketsScreen = () => {
                   }
 
                   try {
-                    const fileUri = `${FileSystem.documentDirectory}${previewPhoto.split('/').pop()}`;
-                    const { uri } = await FileSystem.downloadAsync(previewPhoto, fileUri);
-                    await MediaLibrary.createAssetAsync(uri);
+                    const fileUri = `${documentDirectory}${previewPhoto.split('/').pop()}`;
+                    const { uri } = await downloadAsync(previewPhoto, fileUri);
+                    await createAssetAsync(uri);
                     Alert.alert('Sukses', 'Gambar berhasil disimpan ke galeri.');
                   } catch (error) {
                     console.error('Error downloading photo:', error);
