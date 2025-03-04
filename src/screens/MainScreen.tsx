@@ -7,6 +7,7 @@ import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
+import { getCurrentPositionAsync } from 'expo-location';
 import React, { useState, useEffect, useCallback } from "react";
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -38,6 +39,8 @@ const compressImage = async (uri: string) => {
 };
 
 const MainScreen: React.FC<Props> = ({ navigation }) => {
+  const [currentLocation, setCurrentLocation] = useState<any>(null);
+  const [timestamp, setTimestamp] = useState(moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss"));
   const [tracking, setTracking] = useState(false);
   const [time, setTime] = useState(0);  // To store the time in seconds
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -133,6 +136,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
     if (photos.length < requiredPhotoCount) {
+      const location = await getCurrentPositionAsync({});
+      setTimestamp(moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss")); // timestamp
+      setCurrentLocation(location); // current location
       setPhotoModalVisible(true);
       return;
     }
@@ -149,6 +155,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setPhotos([]);
         setSelectedTicket(null);
         setTime(0);
+        setCurrentLocation(null);
         setUploadProgress(0);
         Alert.alert("Sukses", "Foto berhasil diunggah.");
         setIsUploading(false);
@@ -317,7 +324,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       let ticketData = pendingUploads.find((item: any) => item.ticket_id === ticketId);
       if (!ticketData) {
-        ticketData = { ticket_id: ticketId, user_id: userId, photos: [] };
+        ticketData = { ticket_id: ticketId, user_id: userId, photos: [], timestamp: timestamp };
         pendingUploads.push(ticketData);
       }
 
@@ -354,15 +361,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         for (let j = 0; j < photos.length; j++) {
           try {
             const compressedUri = await compressImage(photos[j]);
-            const timestamp = moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss");
-            const fileName = `${ticket_id}-${timestamp}-${j + 1}.jpg`;
-            let timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName);
+            const fileName = `${ticket_id}-${photos[j].timestamp}-${j + 1}.jpg`;
+            let timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, photos[j].timestamp, currentLocation);
             let retryCount = 0;
 
             while (!timestampedPhoto && retryCount < 3) {
-              // console.log(`🔄 Menunggu ulang timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
+              // console.log(`🔄 Menunggu ulang photos[j].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
               await new Promise(resolve => setTimeout(resolve, 5000));
-              timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName);
+              timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, photos[j].timestamp, currentLocation);
               retryCount++;
             }
 

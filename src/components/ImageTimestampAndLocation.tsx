@@ -1,5 +1,4 @@
-import moment from 'moment-timezone';
-import * as Location from 'expo-location';
+import { requestForegroundPermissionsAsync } from 'expo-location';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Skia, FontStyle, PaintStyle } from '@shopify/react-native-skia';
 import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType } from 'expo-file-system';
@@ -17,15 +16,15 @@ const loadImageAsBase64 = async (uri: string) => {
   }
 };
 
-export const getUserLocationInfo = async () => {
+export const getUserLocationInfo = async (location: any) => {
   try {
     console.log('📍 Mendapatkan informasi lokasi pengguna...');
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = await requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       console.warn('Izin lokasi ditolak');
       return null;
     }
-    const location = await Location.getCurrentPositionAsync({});
+
     const { latitude, longitude } = location.coords;
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
       { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36' } }
@@ -34,7 +33,7 @@ export const getUserLocationInfo = async () => {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
     const address = data.address;
-    console.log('📍 Informasi lokasi:', address);
+    // console.log('📍 Informasi lokasi:', address);
     if (!address) {
       console.error('Alamat tidak ditemukan dalam hasil data');
       return null;
@@ -56,11 +55,11 @@ export const getUserLocationInfo = async () => {
   }
 };
 
-const getUserLocationWithRetry = async (maxRetries = 3, delay = 5000) => {
+const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5000) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`📍 Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
-      const userInfo = await getUserLocationInfo();
+      // console.log(`📍 Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
+      const userInfo = await getUserLocationInfo(location);
       if (userInfo) return userInfo;
     } catch (error) {
       console.error(`⚠️ Gagal mendapatkan lokasi (Percobaan ${attempt}):`, error);
@@ -73,16 +72,16 @@ const getUserLocationWithRetry = async (maxRetries = 3, delay = 5000) => {
 };
 
 // Timestamp and Location
-export const addTimestampToPhoto = async (photoUri: string, fileName: string) => {
+export const addTimestampToPhoto = async (photoUri: string, fileName: string, timestamp: any, location: any) => {
   try {
-    let userInfo = await getUserLocationWithRetry();
+    let userInfo = await getUserLocationWithRetry(location);
     if (!userInfo) {
       console.warn('⚠️ Tidak bisa mendapatkan lokasi, menunda proses.');
       return null;
     }
 
     const timestampText = [
-      `${moment().format('DD MMM YYYY HH:mm:ss')}`,
+      `${timestamp}`,
       `${userInfo.latitude}, ${userInfo.longitude}`,
       `${userInfo.jalan}`,
       `${userInfo.kelurahan}`,
