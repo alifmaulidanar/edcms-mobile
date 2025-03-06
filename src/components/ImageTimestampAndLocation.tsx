@@ -81,7 +81,7 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
     }
 
     const timestampText = [
-      `${timestamp}`,
+      `${timestamp} WIB`,
       `${userInfo.latitude}, ${userInfo.longitude}`,
       `${userInfo.jalan}`,
       `${userInfo.kelurahan}`,

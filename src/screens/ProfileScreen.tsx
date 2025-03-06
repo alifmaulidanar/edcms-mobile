@@ -185,7 +185,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* App Version */}
       <Text className="mt-4 text-center text-gray-600">
-        Versi: {appVersion}
+        {process.env.EXPO_PUBLIC_APP_NAME} v{appVersion}
       </Text>
       <View className="flex justify-center mx-12 my-8 text-center text-gray-600">
         <Text className="mb-6 text-sm text-center">Jangan keluar dari akun Anda tanpa instruksi dari Admin.</Text>

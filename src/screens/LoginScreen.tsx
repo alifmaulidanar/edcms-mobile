@@ -112,7 +112,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* App Version */}
       <Text className="mt-4 text-center text-gray-600">
-        Versi: {appVersion}
+        {process.env.EXPO_PUBLIC_APP_NAME} v{appVersion}
       </Text>
 
       {/* Error Text */}

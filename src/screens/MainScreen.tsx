@@ -137,7 +137,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
     if (photos.length < requiredPhotoCount) {
       const location = await getCurrentPositionAsync({});
-      setTimestamp(moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss")); // timestamp
+      setTimestamp(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss")); // timestamp
       setCurrentLocation(location); // current location
       setPhotoModalVisible(true);
       return;
@@ -278,7 +278,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const handleTakePhoto = async () => {
     const result = await launchCameraAsync({
       mediaTypes: MediaTypeOptions.Images,
-      quality: 1,
+      quality: 0.5,
     });
 
     if (!result.canceled && result.assets.length > 0) {
@@ -324,7 +324,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       let ticketData = pendingUploads.find((item: any) => item.ticket_id === ticketId);
       if (!ticketData) {
-        ticketData = { ticket_id: ticketId, user_id: userId, photos: [], timestamp: timestamp };
+        ticketData = { ticket_id: ticketId, user_id: userId, photos: [], timestamp: timestamp, location: currentLocation };
         pendingUploads.push(ticketData);
       }
 
@@ -362,13 +362,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           try {
             const compressedUri = await compressImage(photos[j]);
             const fileName = `${ticket_id}-${photos[j].timestamp}-${j + 1}.jpg`;
-            let timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, photos[j].timestamp, currentLocation);
+            let timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, pendingUploads[i].timestamp, pendingUploads[i].location);
             let retryCount = 0;
 
             while (!timestampedPhoto && retryCount < 3) {
-              // console.log(`🔄 Menunggu ulang photos[j].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
+              // console.log(`🔄 Menunggu ulang pendingUploads[i].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
               await new Promise(resolve => setTimeout(resolve, 5000));
-              timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, photos[j].timestamp, currentLocation);
+              timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, pendingUploads[i].timestamp, pendingUploads[i].location);
               retryCount++;
             }
 
