@@ -67,3 +67,12 @@ export interface Trip {
   locations?: number[],
   metadata?: any,
 };
+
+export interface QueueItem {
+  ticket_id: string;
+  user_id: string;
+  photos: string[];
+  attempts?: number;
+  timestamp: any;
+  location: any;
+};

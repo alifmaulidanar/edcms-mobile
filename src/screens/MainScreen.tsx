@@ -2,13 +2,15 @@ import moment from "moment-timezone";
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
 import { getTickets } from '../api/tickets';
-import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
+import { Geofence, QueueItem, Ticket } from '../types';
 import { getCurrentPositionAsync } from 'expo-location';
+import BackgroundJob from 'react-native-background-actions';
 import React, { useState, useEffect, useCallback } from "react";
+import { startUploadService } from "../utils/backgroundUploader";
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
@@ -40,7 +42,7 @@ const compressImage = async (uri: string) => {
 
 const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [currentLocation, setCurrentLocation] = useState<any>(null);
-  const [timestamp, setTimestamp] = useState(moment().tz("Asia/Jakarta").format("DDMMYY-HHmmss"));
+  const [timestamp, setTimestamp] = useState(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss"));
   const [tracking, setTracking] = useState(false);
   const [time, setTime] = useState(0);  // To store the time in seconds
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -55,15 +57,45 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
+  const [isPhotoProcessed, setIsPhotoProcessed] = useState(false);
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
 
   useEffect(() => {
     // AsyncStorage.removeItem("pendingUploads");
-    // const queue = AsyncStorage.getItem("pendingUploads");
+    // const pending = AsyncStorage.getItem("pendingUploads");
+    // const queue = AsyncStorage.getItem("uploadQueue");
+    // const failed = AsyncStorage.getItem("failedUploads");
+    // console.log('Pending:', pending);
+    // console.log('Queue:', queue);
+    // console.log('Failed:', failed);
     const interval = setInterval(uploadPendingPhotos, 120000); // Cek setiap 2 menit
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // AsyncStorage.removeItem("uploadQueue");
+    // setIsPhotoProcessed(false);
+    const init = async () => {
+      // if (BackgroundJob.isRunning()) {
+      //   await stopUploadService();
+      // }
+      try {
+        const queue = await AsyncStorage.getItem('uploadQueue');
+        // console.log('Queue:', queue);
+        const isRunning = BackgroundJob.isRunning();
+        console.log(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${isRunning}`);
+        // console.log('Is running:', isRunning);
+        if (!isRunning && queue && JSON.parse(queue).length > 0) {
+          // console.log('Starting background service...');
+          await startUploadService();
+        }
+      } catch (error) {
+        console.error('Init error:', error);
+      }
+    };
+    init();
   }, []);
 
   // Fetch tickets dari API
@@ -274,19 +306,47 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  const addToQueue = async (photos: string[], ticketId: string, userId: string) => {
+    setIsPhotoProcessed(false);
+    const newItem: QueueItem = {
+      ticket_id: ticketId,
+      user_id: userId,
+      photos,
+      timestamp,
+      location: currentLocation,
+    };
+    const queue = JSON.parse(await AsyncStorage.getItem('uploadQueue') || '[]');
+    const newQueue = [...queue, newItem];
+    await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
+  };
+
   // Handle picking photo
   const handleTakePhoto = async () => {
+    setIsPhotoProcessed(true);
     const result = await launchCameraAsync({
       mediaTypes: MediaTypeOptions.Images,
       quality: 0.5,
     });
-
     if (!result.canceled && result.assets.length > 0) {
       const photoUri = result.assets[0].uri;
-      if (photos.length < requiredPhotoCount) {
-        setPhotos([...photos, photoUri]);
+      // Add timestamp and location to photo
+      const index = photos.length;
+      const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
+      if (processedUri) {
+        if (photos.length < requiredPhotoCount) {
+          const newPhotos = [...photos, processedUri];
+          setPhotos(newPhotos);
+          setIsPhotoProcessed(false);
+          if (newPhotos.length === requiredPhotoCount) {
+            if (selectedTicket?.ticket_id && userData?.user_id) {
+              await addToQueue(newPhotos, selectedTicket.ticket_id, userData.user_id);
+            }
+          }
+        } else {
+          Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
+        }
       } else {
-        Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
+        Alert.alert("Gagal memproses foto", "Silakan coba lagi.");
       }
     }
   };
@@ -314,27 +374,27 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // Handle saving photos locally
-  const savePhotoLocally = async (photoUris: string[], ticketId: string, userId: string) => {
-    try {
-      const storedData = await AsyncStorage.getItem("pendingUploads");
-      let pendingUploads = storedData ? JSON.parse(storedData) : [];
-      if (!Array.isArray(pendingUploads)) {
-        pendingUploads = [];
-      }
+  // const savePhotoLocally = async (photoUris: string[], ticketId: string, userId: string) => {
+  //   try {
+  //     const storedData = await AsyncStorage.getItem("pendingUploads");
+  //     let pendingUploads = storedData ? JSON.parse(storedData) : [];
+  //     if (!Array.isArray(pendingUploads)) {
+  //       pendingUploads = [];
+  //     }
 
-      let ticketData = pendingUploads.find((item: any) => item.ticket_id === ticketId);
-      if (!ticketData) {
-        ticketData = { ticket_id: ticketId, user_id: userId, photos: [], timestamp: timestamp, location: currentLocation };
-        pendingUploads.push(ticketData);
-      }
+  //     let ticketData = pendingUploads.find((item: any) => item.ticket_id === ticketId);
+  //     if (!ticketData) {
+  //       ticketData = { ticket_id: ticketId, user_id: userId, photos: [], timestamp: timestamp, location: currentLocation };
+  //       pendingUploads.push(ticketData);
+  //     }
 
-      ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
-      await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
-      // console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
-    } catch (error) {
-      console.error("❌ Error saving photos locally:", error);
-    }
-  };
+  //     ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
+  //     await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
+  //     // console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
+  //   } catch (error) {
+  //     console.error("❌ Error saving photos locally:", error);
+  //   }
+  // };
 
   // Background photo upload
   const uploadPendingPhotos = async () => {
@@ -526,7 +586,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 onPress={async () => {
                   if (!selectedTicket || !userData) return;
                   setIsUploading(true);
-                  await savePhotoLocally(photos, selectedTicket.ticket_id, userData.user_id);
+                  // await savePhotoLocally(photos, selectedTicket.ticket_id, userData.user_id);
                   handleStop();
                 }}
                 className="items-center px-8 py-4 my-4 bg-blue-500 rounded-full"
@@ -540,11 +600,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                onPress={handleTakePhoto}
-                className="items-center px-8 py-4 my-4 bg-[#059669] rounded-full"
+                onPress={() => {
+                  if (!isPhotoProcessed) {
+                    handleTakePhoto();
+                  }
+                }}
+                className={`items-center px-8 py-4 my-4 rounded-full ${isPhotoProcessed ? "bg-gray-300" : "bg-[#059669]"}`}
                 activeOpacity={0.7}
+                disabled={isPhotoProcessed}
               >
-                <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
+                {isPhotoProcessed ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
+                )}
               </TouchableOpacity>
             )}
 

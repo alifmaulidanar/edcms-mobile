@@ -18,6 +18,17 @@ const Routes = {
   Main: "Main",
 };
 
+const linking = {
+  prefixes: [`${process.env.EXPO_PUBLIC_LINKING_URI}://ticket`],
+  config: {
+    screens: {
+      Beranda: 'home',
+      Tiket: 'ticket',
+      Profil: 'profile',
+    },
+  },
+};
+
 // Stack navigator
 const Stack = createStackNavigator();
 
@@ -67,7 +78,7 @@ export default function App() {
   return (
     <Provider store={store}>
       <SafeAreaProvider>
-        <NavigationContainer>
+        <NavigationContainer linking={linking}>
           <Stack.Navigator initialRouteName={isLoggedIn ? Routes.Main : Routes.Login}>
             <Stack.Screen
               name={Routes.Login}

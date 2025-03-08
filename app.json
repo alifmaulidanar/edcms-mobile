@@ -2,11 +2,12 @@
   "expo": {
     "name": "PastiMS",
     "slug": "pastims",
-    "version": "1.0.6",
+    "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/logo/mdm-logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "pastims",
     "splash": {
       "image": "./assets/logo/pastims-newest-logo.png",
       "resizeMode": "contain",

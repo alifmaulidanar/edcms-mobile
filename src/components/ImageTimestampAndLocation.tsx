@@ -6,7 +6,7 @@ import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType 
 // 🔍 Fungsi untuk membaca file lokal sebagai Base64
 const loadImageAsBase64 = async (uri: string) => {
   try {
-    console.log('📂 Membaca file gambar sebagai Base64:', uri);
+    // console.log('📂 Membaca file gambar sebagai Base64:', uri);
     const base64Data = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
     if (!base64Data) throw new Error('Base64 kosong atau tidak valid.');
     return base64Data;
@@ -18,7 +18,7 @@ const loadImageAsBase64 = async (uri: string) => {
 
 export const getUserLocationInfo = async (location: any) => {
   try {
-    console.log('📍 Mendapatkan informasi lokasi pengguna...');
+    // console.log('📍 Mendapatkan informasi lokasi pengguna...');
     const { status } = await requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       console.warn('Izin lokasi ditolak');
@@ -64,7 +64,7 @@ const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5
     } catch (error) {
       console.error(`⚠️ Gagal mendapatkan lokasi (Percobaan ${attempt}):`, error);
     }
-    console.log(`🕒 Menunggu ${delay / 1000} detik sebelum mencoba lagi...`);
+    // console.log(`🕒 Menunggu ${delay / 1000} detik sebelum mencoba lagi...`);
     await new Promise(resolve => setTimeout(resolve, delay));
   }
   console.error('❌ Gagal mendapatkan lokasi setelah beberapa percobaan.');
