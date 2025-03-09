@@ -1,18 +1,19 @@
 import { Profile } from "../types";
 import Constants from "expo-constants";
+import { getProfile } from "../api/auth";
 import { Ionicons } from "@expo/vector-icons";
 import { setStringAsync } from "expo-clipboard";
-import { getProfile, logout } from "../api/auth";
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { View, Text, ScrollView, Image, RefreshControl, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Image, RefreshControl, TouchableOpacity, ActivityIndicator } from "react-native";
 
 type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   Tickets: undefined;
   Profile: undefined;
+  Settings: undefined;
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
@@ -20,7 +21,6 @@ type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [visible, setVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchInitialData = async () => {
@@ -56,17 +56,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
     alert("ID pengguna telah disalin ke clipboard!");
   };
 
-  // Handle Logout
-  const handleLogout = async () => {
-    await logout();
-    hideDialog();
-    await AsyncStorage.removeItem("userData");
-    navigation.navigate("Login");
-  };
-
-  const showDialog = () => setVisible(true);
-  const hideDialog = () => setVisible(false);
-
   // App Version
   const appVersion = Constants.expoConfig?.version;
 
@@ -84,19 +73,12 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <ScrollView
-      className="flex-1 bg-[#f5f5f5] p-6 mt-8"
+      className="flex-1 bg-[#f5f5f5] p-4 mt-6"
       refreshControl={
         <RefreshControl refreshing={isRefreshing} onRefresh={fetchProfile} />
       }
     >
-      <View className="flex items-end w-full mb-4">
-        <TouchableOpacity onPress={showDialog} className="flex items-center">
-          <View className="flex-row items-center justify-center px-4 py-2 bg-red-500 rounded-full gap-x-2">
-            <Text className="font-semibold text-white rounded-full">Keluar</Text>
-            <Ionicons name="log-out-outline" size={20} color="white" />
-          </View>
-        </TouchableOpacity>
-      </View>
+      <Text className="mb-6 text-2xl font-semibold text-gray-700">Profil</Text>
 
       <View className="flex items-center justify-center py-8 bg-white shadow-sm rounded-3xl">
         {profile?.avatar ? (
@@ -187,42 +169,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       <Text className="mt-4 text-center text-gray-600">
         {process.env.EXPO_PUBLIC_APP_NAME} v{appVersion}
       </Text>
-      <View className="flex justify-center mx-12 my-8 text-center text-gray-600">
-        <Text className="mb-6 text-sm text-center">Jangan keluar dari akun Anda tanpa instruksi dari Admin.</Text>
-        <Text className="mb-6 text-sm text-center">Keluar dari akun Anda dapat menyebabkan tiket dan foto tidak tersimpan dan rusak. Hindari risiko ini dengan tidak keluar dari akun Anda dan tidak mencopot (<Text className="italic">uninstall</Text>) aplikasi ini.</Text>
-      </View>
-
-      {/* Logout Confirmation Modal */}
-      {visible && (
-        <Modal
-          animationType="slide"
-          transparent={true}
-          visible={visible}
-          onRequestClose={hideDialog}
-        >
-          <View className="items-center justify-center flex-1 bg-black bg-opacity-50">
-            <View className="p-6 bg-white rounded-lg w-80">
-              <Text className="mb-4 text-xl text-center">Apakah yakin ingin logout?</Text>
-              <Text className="mb-6 text-center">Jangan keluar dari akun Anda tanpa instruksi dari Admin.</Text>
-              <Text className="mb-6 text-center">Keluar dari akun Anda dapat menyebabkan tiket dan foto tidak tersimpan dan rusak. Hindari risiko ini dengan tidak keluar dari akun Anda dan tidak mencopot (<Text className="italic">uninstall</Text>) aplikasi ini.</Text>
-              <View className="flex-row justify-between">
-                <TouchableOpacity
-                  onPress={hideDialog}
-                  className="px-4 py-2 bg-gray-500 rounded"
-                >
-                  <Text className="text-white">Batal</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleLogout}
-                  className="px-4 py-2 bg-red-500 rounded"
-                >
-                  <Text className="text-white">Keluar</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
     </ScrollView>
   );
 };

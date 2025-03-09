@@ -27,6 +27,7 @@ type RootStackParamList = {
   Main: undefined;
   Tickets: undefined;
   Profile: undefined;
+  Settings: undefined;
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, "Main">;

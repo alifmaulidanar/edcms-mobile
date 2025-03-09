@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import MainScreen from "../screens/MainScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import TicketsScreen from "../screens/TicketsScreen";
+import SettingsScreen from "../screens/SettingsScreen";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
 const Tab = createBottomTabNavigator();
@@ -20,12 +21,15 @@ const TabsNavigator = () => {
             iconName = "ticket";
           } else if (route.name === "Profil") {
             iconName = "person";
+          } else if (route.name === "Setelan") {
+            iconName = "settings";
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: "#4F46E5",
-        tabBarInactiveTintColor: "gray",
+        // tabBarActiveTintColor: "#10b981",
+        tabBarActiveTintColor: "#047857",
+        tabBarInactiveTintColor: "#adb3bc",
         tabBarStyle: { backgroundColor: "#fff" },
       })}
     >
@@ -42,6 +46,11 @@ const TabsNavigator = () => {
       <Tab.Screen
         name="Profil"
         component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen
+        name="Setelan"
+        component={SettingsScreen}
         options={{ headerShown: false }}
       />
     </Tab.Navigator>

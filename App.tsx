@@ -11,11 +11,15 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View, Text } from "react-native";
+import SettingsScreen from "./src/screens/SettingsScreen";
+import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
 
 // Constants for route names
 const Routes = {
   Login: "Login",
   Main: "Main",
+  Settings: "Settings",
+  PrivacyPolicy: "PrivacyPolicy",
 };
 
 const linking = {
@@ -90,6 +94,8 @@ export default function App() {
               component={TabsNavigator}
               options={{ headerShown: false }}
             />
+            <Stack.Screen name={Routes.Settings} component={SettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name={Routes.PrivacyPolicy} component={PrivacyPolicyScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>
