@@ -1,18 +1,18 @@
 import "./global.css";
 import { Provider } from "react-redux";
-import { StatusBar } from "react-native";
 import React, { useEffect, useState } from "react";
 import store, { setUser } from "./src/store/index";
 import { initializeRadar } from "./src/utils/radar";
 import LoginScreen from "./src/screens/LoginScreen";
-import TabsNavigator from "./src/navigation/TabsNavigator";
-import { NavigationContainer } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { View, Text } from "react-native";
+import { View, Text, StatusBar, Linking } from "react-native";
 import SettingsScreen from "./src/screens/SettingsScreen";
+import TabsNavigator from "./src/navigation/TabsNavigator";
+import { createStackNavigator } from "@react-navigation/stack";
+import { NavigationContainer } from "@react-navigation/native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import ForgotPasswordModal from "./src/components/ForgotPassword";
 
 // Constants for route names
 const Routes = {
@@ -23,12 +23,15 @@ const Routes = {
 };
 
 const linking = {
-  prefixes: [`${process.env.EXPO_PUBLIC_LINKING_URI}://ticket`],
+  prefixes: [`${process.env.EXPO_PUBLIC_LINKING_URI}://`],
   config: {
     screens: {
+      Login: "login",
       Beranda: 'home',
       Tiket: 'ticket',
       Profil: 'profile',
+      Settings: "settings",
+      PrivacyPolicy: "privacy-policy",
     },
   },
 };
@@ -44,6 +47,32 @@ export default function App() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      const { url } = event;
+      if (url.includes("reset-password")) {
+        const emailMatch = url.match(/email=([^&]*)/);
+        if (emailMatch) {
+          setEmail(decodeURIComponent(emailMatch[1]));
+          setModalVisible(true);
+        }
+      }
+    };
+    Linking.addEventListener("url", handleDeepLink);
+    Linking.getInitialURL().then((url) => {
+      if (url && url.includes("reset-password")) {
+        const emailMatch = url.match(/email=([^&]*)/);
+        if (emailMatch) {
+          setEmail(decodeURIComponent(emailMatch[1]));
+          setModalVisible(true);
+        }
+      }
+    });
+    return () => Linking.removeAllListeners("url");
+  }, []);
 
   useEffect(() => {
     // Initialize Radar SDK
@@ -65,7 +94,6 @@ export default function App() {
         setIsLoading(false);
       }
     };
-
     loadUserData();
   }, []);
 
@@ -86,7 +114,7 @@ export default function App() {
           <Stack.Navigator initialRouteName={isLoggedIn ? Routes.Main : Routes.Login}>
             <Stack.Screen
               name={Routes.Login}
-              component={LoginScreen}
+              component={LoginScreen as React.ComponentType}
               options={{ headerShown: false }}
             />
             <Stack.Screen
@@ -94,11 +122,13 @@ export default function App() {
               component={TabsNavigator}
               options={{ headerShown: false }}
             />
-            <Stack.Screen name={Routes.Settings} component={SettingsScreen} options={{ headerShown: false }} />
-            <Stack.Screen name={Routes.PrivacyPolicy} component={PrivacyPolicyScreen} options={{ headerShown: false }} />
+            <Stack.Screen name={Routes.Settings} component={SettingsScreen as React.ComponentType} options={{ headerShown: false }} />
+            <Stack.Screen name={Routes.PrivacyPolicy} component={PrivacyPolicyScreen as React.ComponentType} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>
+
+      <ForgotPasswordModal visible={modalVisible} onClose={() => setModalVisible(false)} email={email} />
     </Provider>
   );
 }

@@ -3,11 +3,12 @@ import { login } from "../api/auth";
 import Constants from "expo-constants";
 import { useDispatch } from "react-redux";
 import React, { useState, useEffect } from "react";
+import ForgotPasswordModal from "../components/ForgotPassword";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import LocationPermissionModal from "../components/LocationPermission";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { getBackgroundPermissionsAsync, getForegroundPermissionsAsync } from 'expo-location';
-import { View, Text, TextInput, Button, Alert, Platform, Linking, Image, TouchableOpacity } from "react-native";
+import { View, Text, TextInput, Button, Alert, Platform, Linking, Image, TouchableOpacity, Modal } from "react-native";
 
 type RootStackParamList = {
   Login: undefined;
@@ -21,6 +22,9 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const openModal = () => setModalVisible(true);
+  const closeModal = () => setModalVisible(false);
 
   const openAppSettings = () => {
     if (Platform.OS === 'ios') {
@@ -108,6 +112,14 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
           color="#84439b"
           disabled={!permissionsGranted}
         />
+
+        {/* Forgot password button */}
+        <TouchableOpacity
+          onPress={openModal}
+          className="mt-8"
+        >
+          <Text className="text-center text-[#84439b]">Lupa Password?</Text>
+        </TouchableOpacity>
       </View>
 
       {/* App Version */}
@@ -132,6 +144,9 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Location Permission Modal */}
       <LocationPermissionModal onPermissionsGranted={handlePermissionsGranted} />
+
+      {/* Forgot password modal with OTP */}
+      <ForgotPasswordModal visible={modalVisible} onClose={closeModal} />
     </View>
   );
 };

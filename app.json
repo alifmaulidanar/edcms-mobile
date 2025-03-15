@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "PastiMS",
-    "slug": "pastims",
-    "version": "1.0.8",
+    "name": "PastiMS EDC",
+    "slug": "pastims-edc",
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./assets/logo/mdm-logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "scheme": "pastims",
+    "scheme": "pastimsedc",
     "splash": {
       "image": "./assets/logo/pastims-newest-logo.png",
       "resizeMode": "contain",
@@ -43,7 +43,21 @@
         "foregroundImage": "./assets/logo/mdm-logo.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.app.pastims"
+      "package": "com.app.pastimsedc",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "pastimsedc"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/logo/mdm-logo.png",
