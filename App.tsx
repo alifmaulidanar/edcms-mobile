@@ -26,7 +26,12 @@ const linking = {
   prefixes: [`${process.env.EXPO_PUBLIC_LINKING_URI}://`],
   config: {
     screens: {
-      Login: "login",
+      Login: {
+        path: 'login/reset-password/:email?',
+        parse: {
+          email: (email: string) => decodeURIComponent(email),
+        },
+      },
       Beranda: 'home',
       Tiket: 'ticket',
       Profil: 'profile',
@@ -51,27 +56,23 @@ export default function App() {
   const [email, setEmail] = useState("");
 
   useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
-      const { url } = event;
-      if (url.includes("reset-password")) {
-        const emailMatch = url.match(/email=([^&]*)/);
-        if (emailMatch) {
-          setEmail(decodeURIComponent(emailMatch[1]));
-          setModalVisible(true);
-        }
+    const handleDeepLink = ({ url }: { url: string }) => {
+      console.log('Deep link URL:', url);
+      const route = url.replace(/.*?:\/\//g, '');
+      const path = route.split('/')[1];
+      const emailParam = route.split('email=')[1];
+
+      if (path === 'reset-password' && emailParam) {
+        const decodedEmail = decodeURIComponent(emailParam);
+        setEmail(decodedEmail);
+        setModalVisible(true);
       }
     };
-    Linking.addEventListener("url", handleDeepLink);
-    Linking.getInitialURL().then((url) => {
-      if (url && url.includes("reset-password")) {
-        const emailMatch = url.match(/email=([^&]*)/);
-        if (emailMatch) {
-          setEmail(decodeURIComponent(emailMatch[1]));
-          setModalVisible(true);
-        }
-      }
+    const subscription = Linking.addEventListener("url", handleDeepLink);
+    Linking.getInitialURL().then(url => {
+      if (url) handleDeepLink({ url });
     });
-    return () => Linking.removeAllListeners("url");
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {
