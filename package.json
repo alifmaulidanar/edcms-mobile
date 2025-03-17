@@ -1,6 +1,6 @@
 {
   "name": "pastims-edc-mobile",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -47,6 +47,7 @@
     "react-native-css-interop": "^0.1.22",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-pager-view": "6.5.1",
+    "react-native-paper": "^5.13.1",
     "react-native-radar": "^3.18.8",
     "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "4.12.0",
