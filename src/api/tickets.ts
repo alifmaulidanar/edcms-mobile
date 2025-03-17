@@ -69,3 +69,28 @@ export const updateTicket = async (ticket_id: string, trip_id: string, status: s
     throw error;
   }
 }
+
+// Update ticket extras
+export const updateTicketExtras = async (ticket_id: string, extrasData: any): Promise<void> => {
+  try {
+    // const token = await AsyncStorage.getItem("session");
+    // const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/tickexts/extras`, {
+    const response = await fetch(`http://127.0.0.1:8787/tickets/extras`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Authorization: `Bearer ${token ? JSON.parse(token) : ''}`,
+      },
+      body: JSON.stringify({ ticket_id, extrasData }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      console.error("Error updating ticket:", data.message || "Unknown error");
+      throw new Error(data.message || "Unknown error");
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    throw error;
+  }
+}

@@ -98,7 +98,8 @@ const uploadWorker = async (taskData: any) => {
         } as any);
       });
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${currentJob.ticket_id}`, {
+      // const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${currentJob.ticket_id}`, {
+      const response = await fetch(`http://127.0.0.1:8787/tickets/photos/upload-v2/${currentJob.ticket_id}`, {
         method: 'POST',
         headers: {
           'user_id': currentJob.user_id,
@@ -145,7 +146,6 @@ const uploadWorker = async (taskData: any) => {
       // Try for 5 attempts, then remove from queue
       if ((currentJob.attempts || 0) < MAX_RETRY_ATTEMPTS) {
         await AsyncStorage.setItem('uploadQueue', JSON.stringify(updatedQueue));
-        await stopUploadService();
       } else {
         console.error('Gagal memproses tiket:', error);
         await scheduleNotificationAsync({

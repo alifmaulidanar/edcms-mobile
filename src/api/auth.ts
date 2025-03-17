@@ -1,11 +1,19 @@
 import { Profile } from '../types';
 import Radar from 'react-native-radar';
 import supabase from '../utils/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Login
 export const login = async (email: string, password: string) => {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
+  if (data) {
+    const { error: sessionError } = await supabase.auth.setSession({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
+    if (sessionError) {
+      console.error('Error setting session:', sessionError.message);
+    }
+  }
+  await AsyncStorage.setItem('session', JSON.stringify(data.session.access_token));
   const userId = data.user?.id;
   if (!userId) throw new Error('User ID not found');
   const userData = await getUserData(userId);
