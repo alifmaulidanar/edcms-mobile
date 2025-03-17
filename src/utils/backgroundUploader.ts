@@ -3,7 +3,6 @@ import { saveToLibraryAsync } from 'expo-media-library';
 import BackgroundJob from 'react-native-background-actions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-// import { addTimestampToPhoto } from '../components/ImageTimestampAndLocation';
 import { AndroidNotificationPriority, scheduleNotificationAsync } from 'expo-notifications';
 
 const MAX_RETRY_ATTEMPTS = 5;
@@ -98,8 +97,7 @@ const uploadWorker = async (taskData: any) => {
         } as any);
       });
 
-      // const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${currentJob.ticket_id}`, {
-      const response = await fetch(`http://127.0.0.1:8787/tickets/photos/upload-v2/${currentJob.ticket_id}`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${currentJob.ticket_id}`, {
         method: 'POST',
         headers: {
           'user_id': currentJob.user_id,
