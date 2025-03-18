@@ -51,7 +51,7 @@ const ForgotPasswordModal = ({ visible, onClose, email }: ForgotPasswordModalPro
       setLoading(true);
       await checkIsUserValid(inputEmail);
       const { error } = await supabase.auth.resetPasswordForEmail(inputEmail,
-        { redirectTo: `pastimsedc://login/reset-password?email=${encodeURIComponent(inputEmail)}` }
+        { redirectTo: `pastims://login/reset-password?email=${encodeURIComponent(inputEmail)}` }
       );
       if (error) throw error;
       setOtpSent(true);

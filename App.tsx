@@ -57,7 +57,6 @@ export default function App() {
 
   useEffect(() => {
     const handleDeepLink = ({ url }: { url: string }) => {
-      console.log('Deep link URL:', url);
       const route = url.replace(/.*?:\/\//g, '');
       const path = route.split('/')[1];
       const emailParam = route.split('email=')[1];
