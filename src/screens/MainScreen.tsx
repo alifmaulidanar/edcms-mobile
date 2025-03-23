@@ -15,6 +15,7 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
 import { requestPermissionsAsync, saveToLibraryAsync } from 'expo-media-library';
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
@@ -74,14 +75,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     // const pending = AsyncStorage.getItem("pendingUploads");
     // const queue = AsyncStorage.getItem("uploadQueue");
     // const failed = AsyncStorage.getItem("failedUploads");
-    // console.log('session:', session);
-    // console.log('User data:', parsedUserData);
-    // console.log('Pending:', pending);
-    // console.log('Queue:', queue);
-    // console.log('Failed:', failed);
+    // handleLog('session:', session);
+    // handleLog('User data:', parsedUserData);
+    // handleLog('Pending:', pending);
+    // handleLog('Queue:', queue);
+    // handleLog('Failed:', failed);
     // };
     // fetchData();
-    const interval = setInterval(uploadPendingPhotos, 60000); // Cek setiap 1 menit
+    const interval = setInterval(uploadPendingPhotos, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -97,16 +98,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       // }
       try {
         const queue = await AsyncStorage.getItem('uploadQueue');
-        // console.log('Queue:', queue);
         const isRunning = BackgroundJob.isRunning();
-        console.log(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${isRunning}`);
-        // console.log('Is running:', isRunning);
+        handleLog(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${isRunning}`);
         if (!isRunning && queue && JSON.parse(queue).length > 0) {
-          console.log('Starting background service...');
+          handleLog('Starting background service...');
           await startUploadService();
         }
-      } catch (error) {
-        console.error('Init error:', error);
+      } catch (error: any) {
+        handleError(`Init error: ${error}`);
       }
     };
     init();
@@ -120,7 +119,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setTickets(response);
       }
     } catch (error: any) {
-      console.error("Error fetching tickets:", error.message);
+      handleError(`Error fetching tickets: ${error.message}`);
     }
   }, [userData]);
 
@@ -129,7 +128,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       const response = await getAllGeofences();
       setGeofence(response);
     } catch (error: any) {
-      console.error("Error fetching geofences:", error.message);
+      handleError(`Error fetching geofences: ${error.message}`);
     }
   }, []);
 
@@ -168,9 +167,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         selectedTicket.geofence_id,
         geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.tag || ''
       );
-      console.log('Trip started');
+      handleLog('Trip started');
       setTracking(true);
     } catch (error: any) {
+      handleError(`Error starting trip: ${error}`);
       Alert.alert("Failed to start tracking", error.message);
     }
   };
@@ -178,6 +178,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const handleCompleteTrip = async () => {
     const ticket_id = currentTicketID || selectedTicket?.ticket_id;
     if (!ticket_id || typeof ticket_id !== 'string') {
+      handleError('Ticket ID is not valid');
       Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
       return;
     }
@@ -207,10 +208,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setPhotoModalVisible(false);
         await AsyncStorage.removeItem("selectedTicket");
         setSelectedTicket(null);
+        handleLog('Trip stopped');
         onRefresh();
       }
-    } catch (error) {
-      console.error("Error stopping trip:", error);
+    } catch (error: any) {
+      handleError(`Error stopping trip: ${error}`);
     }
   };
 
@@ -229,15 +231,17 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setTracking(false); // Reset state
         setSelectedTicket(null);
         setTime(0);
+        handleLog('Trip canceled');
         onRefresh();
       }
-    } catch (error) {
-      console.error("Error canceling trip:", error);
+    } catch (error: any) {
+      handleError(`Error canceling trip: ${error}`);
     }
   };
 
   const handleStartWithConfirmation = () => {
     if (!selectedTicket) {
+      handleError('No ticket selected');
       Alert.alert("Tidak ada tiket yg dipilih", "Silakan pilih tiket sebelum memulai pekerjaan.");
       return;
     }
@@ -289,8 +293,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
             setTime(elapsed);
           }
-        } catch (error) {
-          console.error("Error updating time:", error);
+        } catch (error: any) {
+          handleError(`Error updating time: ${error}`);
         }
       }, 1000);
     }
@@ -311,8 +315,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           setSelectedTicket(JSON.parse(storedTicket));
           setTracking(true);
         }
-      } catch (error) {
-        console.error("Error loading tracking data:", error);
+      } catch (error: any) {
+        handleError(`Error loading tracking data: ${error}`);
       }
     };
     loadTrackingData();
@@ -365,6 +369,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
         }
       } else {
+        handleError("Failed to process photo");
         Alert.alert("Gagal memproses foto", "Silakan coba lagi.");
       }
     }
@@ -409,9 +414,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   //     ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
   //     await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
-  //     // console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
-  //   } catch (error) {
-  //     console.error("❌ Error saving photos locally:", error);
+  //     // handleLog(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
+  //   } catch (error: any) {
+  //     handleError("❌ Error saving photos locally:", error);
   //   }
   // };
 
@@ -421,20 +426,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       let storedData = await AsyncStorage.getItem("pendingUploads");
       let pendingUploads = storedData ? JSON.parse(storedData) : [];
       if (!Array.isArray(pendingUploads) || pendingUploads.length === 0) {
-        // console.log("📭 Tidak ada foto yang perlu diunggah.");
+        handleLog("Tidak ada foto yang perlu diunggah.");
         return;
       }
 
-      // console.log(`📦 Jumlah tiket dalam antrian: ${pendingUploads.length}`);
+      handleLog(`Jumlah tiket dalam antrian: ${pendingUploads.length}`);
       let updatedUploads = [...pendingUploads]; // Salinan array untuk diubah
       for (let i = 0; i < pendingUploads.length; i++) {
         const { ticket_id, user_id, photos } = pendingUploads[i];
         if (!ticket_id || !user_id || !Array.isArray(photos) || photos.length !== requiredPhotoCount) {
-          // console.error(`⚠️ Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
+          handleError(`Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
           continue;
         }
 
-        // console.log(`🚀 Memproses tiket ${ticket_id} dengan ${photos.length} foto.`);
+        handleLog(`Memproses tiket ${ticket_id} dengan ${photos.length} foto.`);
         const formData = new FormData();
         let isSuccess = true;
         for (let j = 0; j < photos.length; j++) {
@@ -445,14 +450,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             let retryCount = 0;
 
             while (!timestampedPhoto && retryCount < 3) {
-              // console.log(`🔄 Menunggu ulang pendingUploads[i].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
+              handleLog(`Menunggu ulang pendingUploads[i].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
               await new Promise(resolve => setTimeout(resolve, 5000));
               timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, pendingUploads[i].timestamp, pendingUploads[i].location);
               retryCount++;
             }
 
             if (!timestampedPhoto) {
-              console.error(`❌ Gagal menambahkan timestamp ke foto ${fileName}.`);
+              handleError(`Gagal menambahkan timestamp ke foto ${fileName}.`);
               isSuccess = false;
               break;
             }
@@ -467,21 +472,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             if (status === "granted") {
               await saveToLibraryAsync(timestampedPhoto);
             } else {
-              console.log("🚫 Izin untuk menyimpan ke galeri ditolak.");
+              handleLog("Izin untuk menyimpan ke galeri ditolak.");
             }
-          } catch (error) {
-            console.error(`❌ Gagal memproses foto ${j + 1} untuk tiket ${ticket_id}:`, error);
+          } catch (error: any) {
+            handleError(`Gagal memproses foto ${j + 1} untuk tiket ${ticket_id}: ${error}`);
             isSuccess = false;
             break;
           }
         }
 
         if (!isSuccess) {
-          // console.log(`⚠️ Tiket ${ticket_id} tidak dapat diproses, akan dicoba lagi nanti.`);
+          handleLog(`Tiket ${ticket_id} tidak dapat diproses, akan dicoba lagi nanti.`);
           continue;
         }
 
-        // console.log(`📤 Mengunggah semua foto untuk tiket ${ticket_id}...`);
+        handleLog(`Mengunggah semua foto untuk tiket ${ticket_id}...`);
         try {
           const response = await fetch(
             `${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`,
@@ -496,19 +501,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           );
 
           if (response.ok) {
-            // console.log(`✅ [${ticket_id}] Semua foto berhasil diunggah.`);
+            handleLog(`[${ticket_id}] Semua foto berhasil diunggah.`);
             updatedUploads = updatedUploads.filter(item => item.ticket_id !== ticket_id);
             await AsyncStorage.setItem("pendingUploads", JSON.stringify(updatedUploads));
-            // console.log(`🗑️ [${ticket_id}] Tiket dihapus dari antrian.`);
+            handleLog(`[${ticket_id}] Tiket dihapus dari antrian.`);
           } else {
-            console.error(`❌ [${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
+            handleError(`[${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
           }
-        } catch (error) {
-          console.error(`❌ [${ticket_id}] Error saat mengunggah:`, error);
+        } catch (error: any) {
+          handleError(`[${ticket_id}] Error saat mengunggah: ${error}`);
         }
       }
-    } catch (error) {
-      console.error("❌ Error dalam background upload:", error);
+    } catch (error: any) {
+      handleError(`Error dalam background upload: ${error}`);
     }
   };
 

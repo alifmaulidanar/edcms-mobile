@@ -1,4 +1,4 @@
-import { Modal } from "react-native";
+import { Alert, Modal } from "react-native";
 import { logout } from "../api/auth";
 import Constants from "expo-constants";
 import React, { useState } from "react";
@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { View, Text, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { log as handleLog, error as handleError, sendLogToBackend } from "../utils/logHandler";
 
 
 type RootStackParamList = {
@@ -36,6 +37,11 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const showDialog = () => setVisible(true);
   const hideDialog = () => setVisible(false);
+
+  const handleSendLog = async () => {
+    handleLog("Sending log to the server...");
+    await sendLogToBackend();
+  };
 
   return (
     <View className="flex-1 bg-[#f5f5f5] p-4 mt-6">
@@ -79,7 +85,29 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       {/* <TouchableOpacity className="flex-row items-center justify-between p-4 mb-2 bg-white rounded-lg">
         <Text className="text-gray-700">Bantuan & Dukungan</Text>
         <Ionicons name="chevron-forward" size={20} color="gray" />
-      </TouchableOpacity> */}
+        </TouchableOpacity> */}
+
+      {/* Log */}
+      <Text className="mt-4 mb-2 text-lg font-semibold text-gray-600">Log Aplikasi</Text>
+      <TouchableOpacity
+        className="flex-row items-center justify-between p-4 mb-2 bg-white rounded-lg"
+        onPress={() => {
+          Alert.alert(
+            "Kirim Log",
+            "Apakah Anda yakin ingin mengirim log ke server? Lakukan ini hanya jika diminta oleh Admin.",
+            [
+              {
+                text: "Batal",
+                style: "cancel",
+              },
+              { text: "Ya, kirim", onPress: handleSendLog },
+            ]
+          );
+        }}
+      >
+        <Text className="text-gray-700">Kirim Log ke Server</Text>
+        <Ionicons name="chevron-forward" size={20} color="gray" />
+      </TouchableOpacity>
 
       <View className="mt-40">
         <View className="flex justify-center mx-4 my-6 text-center text-gray-600">

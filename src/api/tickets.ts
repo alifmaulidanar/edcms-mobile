@@ -1,4 +1,5 @@
 import { Ticket } from "../types";
+import { error as handleError } from '../utils/logHandler';
 
 // Get tickets by user ID from backend API
 export const getTickets = async (user_id: string): Promise<Ticket[]> => {
@@ -12,14 +13,14 @@ export const getTickets = async (user_id: string): Promise<Ticket[]> => {
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error fetching tickets:", data.message || "Unknown error");
+      handleError(`Error fetching tickets: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
 
     const data = await response.json();
     return data as Ticket[];
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 }
@@ -36,14 +37,14 @@ export const getSingleTicket = async (ticket_id: string) => {
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error fetching tickets:", data.message || "Unknown error");
+      handleError(`Error fetching tickets: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 }
@@ -61,11 +62,11 @@ export const updateTicket = async (ticket_id: string, trip_id: string, status: s
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error updating ticket:", data.message || "Unknown error");
+      handleError(`Error updating ticket: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 }

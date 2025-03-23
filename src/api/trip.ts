@@ -1,5 +1,6 @@
 import { Trip } from "../types";
 import supabase from "../utils/supabase";
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 
 // Get a trip by ID
 export const getTrip = async (tripExternalId: string): Promise<Trip> => {
@@ -14,7 +15,7 @@ export const getTrip = async (tripExternalId: string): Promise<Trip> => {
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error fetching trip:", data.message || "Unknown error");
+      handleError(`Error fetching trip: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
 
@@ -35,7 +36,7 @@ export const getTrip = async (tripExternalId: string): Promise<Trip> => {
     }
     return trip;
   } catch (error) {
-    console.error("Error getTrip:", error);
+    handleError(`Error getTrip: ${error}`);
     throw error;
   }
 }
@@ -50,12 +51,12 @@ export const getTripIdByTicketId = async (ticket_id: string): Promise<string> =>
       .single();
 
     if (error) {
-      console.error("Error fetching ticket:", error.message);
+      handleError(`Error fetching ticket: ${error.message}`);
       throw new Error(error.message);
     }
     return tickets?.trip_id || '';
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 }
@@ -74,7 +75,7 @@ export const createTrip = async (
   approaching_threshold: number
 ): Promise<void> => {
   try {
-    console.log("Creating trip");
+    handleLog("Creating trip");
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL as string}/trip`, {
       method: "POST",
       headers: {
@@ -87,12 +88,12 @@ export const createTrip = async (
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error creating trip:", data.message || "Unknown error");
+      handleError(`Error creating trip: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
-    console.log("Trip created successfully");
+    handleLog("Trip created successfully");
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 }
@@ -110,12 +111,12 @@ export const updateTrip = async (trip_id: string, status: string, duration: numb
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error updating trip:", data.message || "Unknown error");
+      handleError(`Error updating trip: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
-    console.log("Trip updated successfully");
+    handleLog("Trip updated successfully");
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 }

@@ -3,6 +3,7 @@ import { saveToLibraryAsync } from 'expo-media-library';
 import BackgroundJob from 'react-native-background-actions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { AndroidNotificationPriority, scheduleNotificationAsync } from 'expo-notifications';
 
 const MAX_RETRY_ATTEMPTS = 5;
@@ -29,11 +30,11 @@ const processPhoto = async (photoUri: string, ticketId: string, timestamp: strin
     if (compressed.uri) {
       await saveToLibraryAsync(compressed.uri);
     } else {
-      console.warn('Gagal simpan ke galeri, lanjutkan upload...');
+      handleLog('Gagal simpan ke galeri, lanjutkan upload...');
     }
     return compressed.uri;
-  } catch (error) {
-    console.error('Gagal memproses foto:', error);
+  } catch (error: any) {
+    handleError(`Gagal memproses foto: ${error}`);
     throw error;
   }
 };
@@ -111,7 +112,7 @@ const uploadWorker = async (taskData: any) => {
         await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
       }
     } catch (error) {
-      console.error('Gagal memproses tiket:', error);
+      handleError(`Gagal memproses tiket: ${error}`);
       const updatedQueue = queue.map(item =>
         item.ticket_id === currentJob.ticket_id
           ? { ...item, attempts: (item.attempts || 0) + 1 }
@@ -125,11 +126,12 @@ const uploadWorker = async (taskData: any) => {
         // Save to failed queue
         const failed = JSON.parse(await AsyncStorage.getItem('failedQueue') || '[]');
         if (failed.length >= MAX_FAILED_QUEUE_SIZE) {
+          handleError('Antrian gagal terlalu besar, hapus antrian terlama...');
           failed.shift(); // Remove the oldest item
         }
         failed.push(currentJob);
         await AsyncStorage.setItem('failedQueue', JSON.stringify([...failed, currentJob]));
-        console.log(`[${new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' })}] Tiket ${currentJob.ticket_id} gagal, attempts: ${currentJob.attempts || 0}`);
+        handleLog(`[${new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' })}] Tiket ${currentJob.ticket_id} gagal, attempts: ${currentJob.attempts || 0}`);
         await scheduleNotificationAsync({
           content: {
             title: 'Gagal mengunggah foto',
@@ -145,7 +147,7 @@ const uploadWorker = async (taskData: any) => {
       if ((currentJob.attempts || 0) < MAX_RETRY_ATTEMPTS) {
         await AsyncStorage.setItem('uploadQueue', JSON.stringify(updatedQueue));
       } else {
-        console.error('Gagal memproses tiket:', error);
+        handleError(`Gagal memproses tiket: ${error}`);
         await scheduleNotificationAsync({
           content: {
             title: 'Gagal mengunggah foto',
@@ -178,9 +180,10 @@ export const startUploadService = async () => {
     },
   };
   await BackgroundJob.start(uploadWorker, options);
-  console.log(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${BackgroundJob.isRunning()}`);
+  handleLog(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${BackgroundJob.isRunning()}`);
 };
 
 export const stopUploadService = async () => {
+  handleLog('Menghentikan background service...');
   await BackgroundJob.stop();
 };

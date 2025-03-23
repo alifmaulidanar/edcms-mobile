@@ -4,15 +4,16 @@ import React, { useEffect, useState } from "react";
 import store, { setUser } from "./src/store/index";
 import { initializeRadar } from "./src/utils/radar";
 import LoginScreen from "./src/screens/LoginScreen";
-import { View, Text, StatusBar, Linking } from "react-native";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import TabsNavigator from "./src/navigation/TabsNavigator";
+import { View, Text, StatusBar, Linking } from "react-native";
+import { error as handleError } from "./src/utils/logHandler";
 import { createStackNavigator } from "@react-navigation/stack";
 import { NavigationContainer } from "@react-navigation/native";
+import ForgotPasswordModal from "./src/components/ForgotPassword";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import ForgotPasswordModal from "./src/components/ForgotPassword";
 
 // Constants for route names
 const Routes = {
@@ -88,8 +89,8 @@ export default function App() {
           store.dispatch(setUser(user)); // Set user in Redux
           setIsLoggedIn(true);
         }
-      } catch (error) {
-        console.error("Error loading user data:", error);
+      } catch (error: any) {
+        handleError(`Error loading user data: ${error}`);
       } finally {
         setIsLoading(false);
       }
