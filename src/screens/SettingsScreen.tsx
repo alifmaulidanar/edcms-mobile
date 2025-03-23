@@ -112,7 +112,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       <View className="mt-40">
         <View className="flex justify-center mx-4 my-6 text-center text-gray-600">
           <Text className="mb-4 text-sm text-center">Jangan keluar dari akun Anda tanpa instruksi dari Admin.</Text>
-          <Text className="text-sm text-center">Keluar dari akun Anda dapat menyebabkan tiket dan foto tidak tersimpan dan rusak. Hindari risiko ini dengan tidak keluar dari akun Anda dan tidak mencopot (<Text className="italic">uninstall</Text>) aplikasi ini.</Text>
+          <Text className="text-sm text-center">Keluar dari akun Anda dapat menyebabkan tiket dan foto tidak tersimpan dan rusak. Hindari risiko dengan tidak keluar dari akun Anda dan tidak mencopot (<Text className="italic">uninstall</Text>) aplikasi ini.</Text>
         </View>
         <TouchableOpacity
           onPress={showDialog}

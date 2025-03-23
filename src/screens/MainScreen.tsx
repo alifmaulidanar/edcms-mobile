@@ -37,7 +37,7 @@ const compressImage = async (uri: string) => {
   const manipResult = await manipulateAsync(
     uri,
     [{ resize: { width: 800 } }], // Resize to a width of 800px
-    { compress: 0.5, format: SaveFormat.JPEG, base64: true }, // Compress to 50%
+    { compress: 0.4, format: SaveFormat.JPEG, base64: true }, // Compress to 40%
   );
   return manipResult.uri;
 };
@@ -57,6 +57,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadMessage, setUploadMessage] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [isPhotoProcessed, setIsPhotoProcessed] = useState(false);
@@ -99,7 +100,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       try {
         const queue = await AsyncStorage.getItem('uploadQueue');
         const isRunning = BackgroundJob.isRunning();
-        handleLog(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${isRunning}`);
+        handleLog(`Background service status: ${isRunning}`);
         if (!isRunning && queue && JSON.parse(queue).length > 0) {
           handleLog('Starting background service...');
           await startUploadService();
@@ -176,6 +177,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleCompleteTrip = async () => {
+    setIsCompleting(true);
     const ticket_id = currentTicketID || selectedTicket?.ticket_id;
     if (!ticket_id || typeof ticket_id !== 'string') {
       handleError('Ticket ID is not valid');
@@ -205,6 +207,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setUploadProgress(0);
         Alert.alert("Sukses", "Foto berhasil diunggah.");
         setIsUploading(false);
+        setIsCompleting(false);
         setPhotoModalVisible(false);
         await AsyncStorage.removeItem("selectedTicket");
         setSelectedTicket(null);
@@ -783,22 +786,28 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* debug */}
         {/* <TouchableOpacity
-          onPress={handleDebugPhotoModal}
-          className="items-center w-full px-8 py-4 mb-4 bg-gray-500 rounded-full"
-          activeOpacity={0.7}
-        >
-          <Text className="text-xl font-bold text-white">debug photo modal</Text>
-        </TouchableOpacity>
+              onPress={handleDebugPhotoModal}
+              className={`items-center w-full px-8 py-4 mb-4 rounded-full ${isCompleting ? "bg-gray-300" : "bg-gray-500"}`}
+              activeOpacity={0.7}
+              disabled={isCompleting}
+            >
+              <Text className="text-xl font-bold text-white">debug photo modal</Text>
+            </TouchableOpacity> */}
 
         {/* Start/Stop Button */}
         <TouchableOpacity
           onPress={tracking ? handleCompletetWithConfirmation : handleStartWithConfirmation}
-          className={`items-center w-full py-4 px-8 rounded-full ${tracking ? "bg-red-500" : "bg-[#059669]"}`}
+          className={`items-center w-full py-4 px-8 rounded-full ${isCompleting ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
           activeOpacity={0.7}
+          disabled={isCompleting}
         >
-          <Text className="text-xl font-bold text-white">
-            {tracking ? "Selesai" : "Mulai Bekerja"}
-          </Text>
+          {isCompleting ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text className="text-xl font-bold text-white">
+              {tracking ? "Selesai" : "Mulai Bekerja"}
+            </Text>
+          )}
         </TouchableOpacity>
 
         {/* Cancel Button */}

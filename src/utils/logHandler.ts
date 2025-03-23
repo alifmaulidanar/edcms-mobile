@@ -34,7 +34,7 @@ export const sendLogToBackend = async () => {
       error(`Gagal mengunggah log ke Supabase Storage: ${err}`);
       throw err;
     }
-    log('Log berhasil diunggah ke Supabase Storage');
+    log('Log berhasil diunggah ke database');
   } catch (err: any) {
     error(`Error saat mengirim log ke backend: ${err}`);
   }

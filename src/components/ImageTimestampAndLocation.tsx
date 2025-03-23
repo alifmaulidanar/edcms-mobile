@@ -7,7 +7,7 @@ import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType 
 // Base64
 const loadImageAsBase64 = async (uri: string) => {
   try {
-    handleLog(`Membaca file gambar sebagai Base64: ${uri}`);
+    // handleLog(`Membaca file gambar sebagai Base64: ${uri}`);
     const base64Data = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
     if (!base64Data) {
       handleError('Base64 kosong atau tidak valid.');
@@ -40,7 +40,7 @@ export const getUserLocationInfo = async (location: any) => {
     }
     const data = await response.json();
     const address = data.address;
-    handleLog(`Informasi lokasi: ${address}`);
+    // handleLog(`Informasi lokasi: ${address}`);
     if (!address) {
       handleError('Alamat tidak ditemukan dalam hasil data');
       return null;
@@ -65,7 +65,7 @@ export const getUserLocationInfo = async (location: any) => {
 const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5000) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      handleLog(`Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
+      // handleLog(`Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
       const userInfo = await getUserLocationInfo(location);
       if (userInfo) return userInfo;
     } catch (error) {
@@ -98,7 +98,7 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
       `${userInfo.provinsi}`,
       `${userInfo.negara}`
     ];
-    handleLog(`Menambahkan timestamp ke foto: ${photoUri}`);
+    handleLog(`Menambahkan timestamp ke foto`);
 
     // 1. Image Dimensions
     const { width: imgWidth, height: imgHeight } = await manipulateAsync(
