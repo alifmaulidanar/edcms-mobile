@@ -1602,6 +1602,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         {/* debug */}
         {/* <TouchableOpacity
           onPress={handleDebugPhotoModal}
+          +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
           className="items-center w-full px-8 py-4 mb-4 bg-gray-500 rounded-full"
           activeOpacity={0.7}
         >

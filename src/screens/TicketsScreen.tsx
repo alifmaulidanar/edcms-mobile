@@ -12,6 +12,8 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
 import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert, TextInput } from "react-native";
 
+const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
+
 const copyToClipboard = (text: string) => {
   setStringAsync(text);
   alert("ID telah disalin ke clipboard!");
@@ -358,7 +360,7 @@ const TicketsScreen = () => {
             {selectedTicket ? (
               <View>
                 {/* Ticket ID */}
-                <View className="flex-row items-center justify-between mb-4">
+                <View className="flex-row items-center justify-between mb-2">
                   <Text className="font-medium text-gray-500">ID Tiket:</Text>
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
@@ -374,7 +376,7 @@ const TicketsScreen = () => {
                 </View>
 
                 {/* Geofence ID */}
-                <View className="flex-row items-center justify-between mb-4">
+                <View className="flex-row items-center justify-between mb-2">
                   <Text className="font-medium text-gray-500">ID Tempat:</Text>
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
@@ -390,7 +392,7 @@ const TicketsScreen = () => {
                 </View>
 
                 {/* Place Name */}
-                <View className="flex-row items-center justify-between mb-4">
+                <View className="flex-row items-center justify-between mb-2">
                   <Text className="font-medium text-gray-500">Tempat:</Text>
                   <View className="flex-row items-center">
                     <Text className="text-gray-800">
@@ -419,7 +421,7 @@ const TicketsScreen = () => {
                 </TouchableOpacity>
 
                 {/* Status */}
-                <View className="flex-row justify-between mb-2">
+                <View className="flex-row justify-between">
                   <Text className="font-medium text-gray-500">Status:</Text>
                   <Text
                     className={`text-sm font-semibold px-2 py-1 rounded ${selectedTicket.status === "assigned"
@@ -442,12 +444,12 @@ const TicketsScreen = () => {
                 </View>
 
                 {/* Photos Section */}
-                <View className="mb-4">
+                <View className="mb-2">
                   <Text className="mb-2 font-medium text-gray-500">Foto Bukti:</Text>
                   {photos.length === 0 ? (
                     <Text className="text-gray-500">-</Text>
                   ) : (
-                    <ScrollView style={{ maxHeight: 370 }} showsVerticalScrollIndicator={true}>
+                    <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true}>
 
                       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
                         {photos.map((photo, index) => (
@@ -477,13 +479,13 @@ const TicketsScreen = () => {
                 </View>
 
                 {/* Description */}
-                {/* <View className="mb-4">
+                {/* <View className="mb-2">
                   <Text className="font-medium text-gray-500">Deskripsi:</Text>
                   <Text className="text-gray-800">{selectedTicket.description}</Text>
                 </View> */}
 
                 {/* Created At */}
-                <View className="flex-row justify-between mb-4">
+                <View className="flex-row justify-between mb-2">
                   <Text className="font-medium text-gray-500">Dibuat Pada:</Text>
                   <Text className="text-gray-800">
                     {(() => {
@@ -500,7 +502,7 @@ const TicketsScreen = () => {
                 </View>
 
                 {/* Updated At */}
-                <View className="flex-row justify-between mb-4">
+                <View className="flex-row justify-between mb-2">
                   <Text className="font-medium text-gray-500">Diperbarui Pada:</Text>
                   <Text className="text-gray-800">
                     {(() => {
@@ -519,6 +521,17 @@ const TicketsScreen = () => {
             ) : (
               <Text className="text-gray-500">Memuat data tiket...</Text>
             )}
+
+            {/* Download PDF Button */}
+            <TouchableOpacity
+              className="flex flex-row items-center justify-center p-3 mt-2 border border-blue-500 rounded-lg gap-x-2"
+              onPress={() => {
+                Linking.openURL(`${BASE_URL2}/admin/tickets/pdf/${selectedTicket?.ticket_id}/${selectedTicket?.user_id}/${selectedTicket?.geofence_id}`);
+              }}
+            >
+              <Text className="font-medium text-blue-500">Unduh PDF</Text>
+              <Ionicons name="document-outline" size={18} color="#3B82F6" />
+            </TouchableOpacity>
 
             {/* Close Button */}
             <TouchableOpacity

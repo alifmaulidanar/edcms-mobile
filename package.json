@@ -3,10 +3,12 @@
   "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
+    "dev": "npx expo run:android --device",
     "android": "DARK_MODE=media expo run:android",
     "ios": "DARK_MODE=media expo run:ios",
-    "web": "DARK_MODE=media expo start --web"
+    "web": "DARK_MODE=media expo start --web",
+    "prebuild": "npx expo prebuild",
+    "apk": "cd android && gradlew assembleRelease"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.2.3",
