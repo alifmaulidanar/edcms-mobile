@@ -4,6 +4,7 @@ import { getProfile } from "../api/auth";
 import { Ionicons } from "@expo/vector-icons";
 import { setStringAsync } from "expo-clipboard";
 import React, { useState, useEffect } from "react";
+import { error as handleError } from '../utils/logHandler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { View, Text, ScrollView, Image, RefreshControl, TouchableOpacity, ActivityIndicator } from "react-native";
@@ -30,7 +31,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         setProfile(JSON.parse(userData));
       }
     } catch (error) {
-      console.error("Error reading userData from AsyncStorage:", error);
+      handleError(`Error reading userData from AsyncStorage: ${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -45,7 +46,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         await AsyncStorage.setItem("userData", JSON.stringify(response));
       }
     } catch (error: any) {
-      console.error("Error fetching profile:", error.message);
+      handleError(`Error fetching profile: ${error.message}`);
     } finally {
       setIsRefreshing(false);
     }

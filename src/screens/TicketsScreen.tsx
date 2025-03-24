@@ -5,6 +5,7 @@ import { setStringAsync } from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { getAllGeofences } from "../api/geofences";
 import { Picker } from "@react-native-picker/picker";
+import { error as handleError } from '../utils/logHandler';
 import { getSingleTicket, getTickets } from "../api/tickets";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { downloadAsync, documentDirectory } from 'expo-file-system';
@@ -21,7 +22,7 @@ const copyToClipboard = (text: string) => {
 
 const openInGoogleMaps = (coordinates: [number, number]) => {
   if (!coordinates || coordinates.length !== 2) {
-    console.error("Invalid coordinates");
+    handleError("Invalid coordinates");
     return;
   }
 
@@ -29,7 +30,7 @@ const openInGoogleMaps = (coordinates: [number, number]) => {
   const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 
   Linking.openURL(url).catch((err) =>
-    console.error("Error opening Google Maps:", err)
+    handleError(`Error opening Google Maps: ${err}`)
   );
 };
 
@@ -58,7 +59,7 @@ const TicketsScreen = () => {
         setTickets(response);
       }
     } catch (error: any) {
-      console.error("Error fetching tickets:", error.message);
+      handleError(`Error fetching tickets: ${error.message}`);
     }
   }, [userData]);
 
@@ -68,7 +69,7 @@ const TicketsScreen = () => {
       const response = await getAllGeofences();
       setGeofence(response);
     } catch (error: any) {
-      console.error("Error fetching geofences:", error.message);
+      handleError(`Error fetching geofences: ${error.message}`);
     }
   }, []);
 
@@ -582,7 +583,7 @@ const TicketsScreen = () => {
                     await createAssetAsync(uri);
                     Alert.alert('Sukses', 'Gambar berhasil disimpan ke galeri.');
                   } catch (error) {
-                    console.error('Error downloading photo:', error);
+                    handleError(`Error downloading photo: ${error}`);
                     Alert.alert('Error', 'Gagal menyimpan gambar.');
                   }
                 }}

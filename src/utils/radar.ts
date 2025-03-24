@@ -1,6 +1,7 @@
 import { generateId } from './utils';
 import Radar from 'react-native-radar';
 import { updateTicket } from '../api/tickets';
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { createTrip, getTrip, getTripIdByTicketId, updateTrip } from '../api/trip';
 
 /**
@@ -16,9 +17,9 @@ const initializeRadar = (publishableKey: string) => {
 const requestLocationPermissions = async () => {
   const status = await Radar.getPermissionsStatus();
   if (status === 'NOT_DETERMINED') {
-    // console.log('Requesting foreground location permissions...');
+    handleLog('Requesting foreground location permissions...');
     await Radar.requestPermissions(false);
-    // console.log('Requesting background location permissions...');
+    handleLog('Requesting background location permissions...');
     await Radar.requestPermissions(true);
   }
 };
@@ -30,7 +31,7 @@ const trackLocationOnce = async () => {
   try {
     await Radar.trackOnce();
   } catch (err) {
-    console.error('Error in TrackOnce:', err);
+    handleError(`Error in TrackOnce: ${err}`);
   }
 };
 
@@ -38,6 +39,7 @@ const trackLocationOnce = async () => {
  * Started background tracking with a combination of custom tracking and trip tracking
  */
 const startBackgroundTracking = async (user_id: string, username: string, ticket_id: string, description: string, geofence_id: string, geofence_tag: string) => {
+  handleLog('Starting background tracking...');
   // Request location permissions
   await requestLocationPermissions();
 
@@ -88,7 +90,7 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
 
   try {
     // Start trip tracking (with default trip options and tracking options)
-    // console.log('Starting trip...');
+    handleLog('Starting trip...');
     const result = await Radar.startTrip({
       tripOptions: defaultTripOptions,
       trackingOptions: defaultTrackingOptions
@@ -114,9 +116,9 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
 
     // Update ticket status to "on_progress" in Supabase
     await updateTicket(ticket_id, tripExternalId, 'on_progress');
-    // console.log('Trip started successfully');
+    handleLog('Trip started successfully');
   } catch (err) {
-    console.error('Error starting trip:', err);
+    handleError(`Error starting trip: ${err}`);
   }
 
   // Prepare listener for location updates
@@ -144,12 +146,12 @@ const stopBackgroundTracking = async (ticket_id: string) => {
 
     // Update ticket status to "completed" in Supabase
     await updateTicket(ticket_id, trip_id, 'completed');
-    // console.log('Trip completed successfully');
+    handleLog('Trip completed successfully');
   } catch (err) {
-    console.error('Error completing trip:', err);
+    handleError(`Error completing trip: ${err}`);
   }
   Radar.stopTracking();
-  // console.log('Background tracking stopped.');
+  handleLog('Background tracking stopped.');
 };
 
 /**
@@ -173,12 +175,12 @@ const cancelTrip = async (ticket_id: string) => {
 
     // Update ticket status to "canceled" in Supabase
     await updateTicket(ticket_id, trip_id, 'canceled');
-    // console.log('Trip canceled successfully');
+    handleLog('Trip canceled successfully');
   } catch (err) {
-    console.error('Error canceling trip:', err);
+    handleError(`Error canceling trip: ${err}`);
   }
   Radar.stopTracking();
-  // console.log('Background tracking stopped after trip cancellation.');
+  handleLog('Background tracking stopped after trip cancellation.');
 };
 
 /**
@@ -186,13 +188,13 @@ const cancelTrip = async (ticket_id: string) => {
  */
 const listenForLocationUpdates = () => {
   Radar.on('location', () => {
-    console.log('Location updated');
+    handleLog('Location updated');
   });
   Radar.on('events', () => {
-    console.log('Events detected');
+    handleLog('Events detected');
   });
   Radar.on('error', (err: any) => {
-    console.error('Location tracking error:', err);
+    handleError(`Location tracking error: ${err}`);
   });
 };
 

@@ -2,6 +2,7 @@ import { Profile } from '../types';
 import Radar from 'react-native-radar';
 import supabase from '../utils/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 
 // Login
 export const login = async (email: string, password: string) => {
@@ -10,14 +11,20 @@ export const login = async (email: string, password: string) => {
   if (data) {
     const { error: sessionError } = await supabase.auth.setSession({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
     if (sessionError) {
-      console.error('Error setting session:', sessionError.message);
+      handleError(`Error setting session: ${sessionError.message}`);
     }
   }
   await AsyncStorage.setItem('session', JSON.stringify(data.session.access_token));
   const userId = data.user?.id;
-  if (!userId) throw new Error('User ID not found');
+  if (!userId) {
+    handleError('User ID not found');
+    throw new Error('User ID not found');
+  }
   const userData = await getUserData(userId);
-  if (!userData) throw new Error('User data not found');
+  if (!userData) {
+    handleError('User data not found');
+    throw new Error('User data not found');
+  }
   Radar.setUserId(userId);
   Radar.setMetadata(userData)
   Radar.setDescription(`${userData.username} - ${userData.email} - ${userData.phone}`);
@@ -31,7 +38,10 @@ const getUserData = async (userId: string) => {
     .select('*')
     .eq('user_id', userId)
     .single();
-  if (error) throw error;
+  if (error) {
+    handleError(`Error getting user data: ${error.message}`);
+    throw error;
+  }
   return data;
 };
 
@@ -48,14 +58,14 @@ export const getProfile = async (user_id: string): Promise<Profile> => {
 
     if (!response.ok) {
       const data = await response.json();
-      console.error("Error fetching user profile:", data.message || "Unknown error");
+      handleError(`Error fetching user profile: ${data.message || "Unknown error"}`);
       throw new Error(data.message || "Unknown error");
     }
 
     const data = await response.json();
     return data as Profile;
   } catch (error) {
-    console.error("Error:", error);
+    handleError(`Error: ${error}`);
     throw error;
   }
 };
@@ -63,6 +73,9 @@ export const getProfile = async (user_id: string): Promise<Profile> => {
 // Logout
 export const logout = async () => {
   const { error } = await supabase.auth.signOut();
-  console.log("User logged out");
-  if (error) throw error;
+  handleLog("User logged out");
+  if (error) {
+    handleError(`Error logging out: ${error.message}`);
+    throw error;
+  }
 };

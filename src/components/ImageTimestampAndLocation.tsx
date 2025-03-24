@@ -1,27 +1,31 @@
 import { requestForegroundPermissionsAsync } from 'expo-location';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Skia, FontStyle, PaintStyle } from '@shopify/react-native-skia';
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType } from 'expo-file-system';
 
-// 🔍 Fungsi untuk membaca file lokal sebagai Base64
+// Base64
 const loadImageAsBase64 = async (uri: string) => {
   try {
-    // console.log('📂 Membaca file gambar sebagai Base64:', uri);
+    // handleLog(`Membaca file gambar sebagai Base64: ${uri}`);
     const base64Data = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
-    if (!base64Data) throw new Error('Base64 kosong atau tidak valid.');
+    if (!base64Data) {
+      handleError('Base64 kosong atau tidak valid.');
+      throw new Error('Base64 kosong atau tidak valid.');
+    }
     return base64Data;
   } catch (error) {
-    console.error('❌ Gagal membaca file gambar:', error);
+    handleError(`Gagal membaca file gambar: ${error}`);
     return null;
   }
 };
 
 export const getUserLocationInfo = async (location: any) => {
   try {
-    // console.log('📍 Mendapatkan informasi lokasi pengguna...');
+    handleLog('Mendapatkan informasi lokasi pengguna...');
     const { status } = await requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      console.warn('Izin lokasi ditolak');
+      handleError('Izin lokasi foreground ditolak');
       return null;
     }
 
@@ -30,12 +34,15 @@ export const getUserLocationInfo = async (location: any) => {
       { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36' } }
     );
 
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      handleError(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     const data = await response.json();
     const address = data.address;
-    // console.log('📍 Informasi lokasi:', address);
+    // handleLog(`Informasi lokasi: ${address}`);
     if (!address) {
-      console.error('Alamat tidak ditemukan dalam hasil data');
+      handleError('Alamat tidak ditemukan dalam hasil data');
       return null;
     }
     return {
@@ -50,7 +57,7 @@ export const getUserLocationInfo = async (location: any) => {
       negara: address.country || '-',
     }
   } catch (error) {
-    console.error('Gagal mendapatkan lokasi:', error);
+    handleError(`Gagal mendapatkan lokasi: ${error}`);
     return null;
   }
 };
@@ -58,16 +65,16 @@ export const getUserLocationInfo = async (location: any) => {
 const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5000) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // console.log(`📍 Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
+      // handleLog(`Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
       const userInfo = await getUserLocationInfo(location);
       if (userInfo) return userInfo;
     } catch (error) {
-      console.error(`⚠️ Gagal mendapatkan lokasi (Percobaan ${attempt}):`, error);
+      handleError(`Gagal mendapatkan lokasi (Percobaan ${attempt}): ${error}`);
     }
-    // console.log(`🕒 Menunggu ${delay / 1000} detik sebelum mencoba lagi...`);
+    handleLog(`Menunggu ${delay / 1000} detik sebelum mencoba lagi...`);
     await new Promise(resolve => setTimeout(resolve, delay));
   }
-  console.error('❌ Gagal mendapatkan lokasi setelah beberapa percobaan.');
+  handleError('Gagal mendapatkan lokasi setelah beberapa percobaan.');
   return null;
 };
 
@@ -76,7 +83,7 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
   try {
     let userInfo = await getUserLocationWithRetry(location);
     if (!userInfo) {
-      console.warn('⚠️ Tidak bisa mendapatkan lokasi, menunda proses.');
+      handleError('Tidak bisa mendapatkan lokasi, menunda proses.');
       return null;
     }
 
@@ -91,6 +98,7 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
       `${userInfo.provinsi}`,
       `${userInfo.negara}`
     ];
+    handleLog(`Menambahkan timestamp ke foto`);
 
     // 1. Image Dimensions
     const { width: imgWidth, height: imgHeight } = await manipulateAsync(
@@ -146,7 +154,7 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
     await writeAsStringAsync(fileUri, newImageBase64, { encoding: EncodingType.Base64 });
     return fileUri;
   } catch (error) {
-    console.error('Error adding timestamp:', error);
+    handleError(`Error adding timestamp: ${error}`);
     return photoUri;
   }
 };

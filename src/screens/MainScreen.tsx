@@ -1,7 +1,6 @@
 import moment from "moment-timezone";
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
-import { getTickets, updateTicketExtras } from '../api/tickets';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getAllGeofences } from '../api/geofences';
@@ -11,11 +10,13 @@ import { getCurrentPositionAsync } from 'expo-location';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
 import React, { useState, useEffect, useCallback } from "react";
+import { getTickets, updateTicketExtras } from '../api/tickets';
 import { startUploadService } from "../utils/backgroundUploader";
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
 import { requestPermissionsAsync, saveToLibraryAsync } from 'expo-media-library';
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
@@ -38,7 +39,7 @@ const compressImage = async (uri: string) => {
   const manipResult = await manipulateAsync(
     uri,
     [{ resize: { width: 800 } }], // Resize to a width of 800px
-    { compress: 0.5, format: SaveFormat.JPEG, base64: true }, // Compress to 50%
+    { compress: 0.4, format: SaveFormat.JPEG, base64: true }, // Compress to 40%
   );
   return manipResult.uri;
 };
@@ -59,6 +60,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadMessage, setUploadMessage] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [isPhotoProcessed, setIsPhotoProcessed] = useState(false);
@@ -78,14 +80,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     // const pending = AsyncStorage.getItem("pendingUploads");
     // const queue = AsyncStorage.getItem("uploadQueue");
     // const failed = AsyncStorage.getItem("failedUploads");
-    // console.log('session:', session);
-    // console.log('User data:', parsedUserData);
-    // console.log('Pending:', pending);
-    // console.log('Queue:', queue);
-    // console.log('Failed:', failed);
+    // handleLog('session:', session);
+    // handleLog('User data:', parsedUserData);
+    // handleLog('Pending:', pending);
+    // handleLog('Queue:', queue);
+    // handleLog('Failed:', failed);
     // };
     // fetchData();
-    const interval = setInterval(uploadPendingPhotos, 60000); // Cek setiap 1 menit
+    const interval = setInterval(uploadPendingPhotos, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,16 +103,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       // }
       try {
         const queue = await AsyncStorage.getItem('uploadQueue');
-        // console.log('Queue:', queue);
         const isRunning = BackgroundJob.isRunning();
-        console.log(`[${new Date().toLocaleString('en-US', { timeZone: 'Asia/Jakarta' })}] Background service status: ${isRunning}`);
-        // console.log('Is running:', isRunning);
+        handleLog(`Background service status: ${isRunning}`);
         if (!isRunning && queue && JSON.parse(queue).length > 0) {
-          console.log('Starting background service...');
+          handleLog('Starting background service...');
           await startUploadService();
         }
-      } catch (error) {
-        console.error('Init error:', error);
+      } catch (error: any) {
+        handleError(`Init error: ${error}`);
       }
     };
     init();
@@ -134,7 +134,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setTickets(response);
       }
     } catch (error: any) {
-      console.error("Error fetching tickets:", error.message);
+      handleError(`Error fetching tickets: ${error.message}`);
     }
   }, [userData]);
 
@@ -143,7 +143,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       const response = await getAllGeofences();
       setGeofence(response);
     } catch (error: any) {
-      console.error("Error fetching geofences:", error.message);
+      handleError(`Error fetching geofences: ${error.message}`);
     }
   }, []);
 
@@ -182,16 +182,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         selectedTicket.geofence_id,
         geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.tag || ''
       );
-      console.log('Trip started');
+      handleLog('Trip started');
       setTracking(true);
     } catch (error: any) {
+      handleError(`Error starting trip: ${error}`);
       Alert.alert("Failed to start tracking", error.message);
     }
   };
 
   const handleCompleteTrip = async () => {
+    setIsCompleting(true);
     const ticket_id = currentTicketID || selectedTicket?.ticket_id;
     if (!ticket_id || typeof ticket_id !== 'string') {
+      handleError('Ticket ID is not valid');
       Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
       return;
     }
@@ -218,6 +221,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setUploadProgress(0);
         Alert.alert("Sukses", "Foto berhasil diunggah.");
         setIsUploading(false);
+        setIsCompleting(false);
         setPhotoModalVisible(false);
         if (ticketExtrasFlag === "true") {
           setTicketExtrasModalVisible(true);
@@ -225,11 +229,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         if (ticketExtrasFlag === "false") {
           await AsyncStorage.removeItem("selectedTicket");
           setSelectedTicket(null);
+          handleLog('Trip stopped');
           onRefresh();
         }
       }
     } catch (error) {
-      console.error("Error stopping trip:", error);
+      handleError(`Error stopping trip: ${error}`);
     }
   };
 
@@ -252,15 +257,17 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setTracking(false); // Reset state
         setSelectedTicket(null);
         setTime(0);
+        handleLog('Trip canceled');
         onRefresh();
       }
-    } catch (error) {
-      console.error("Error canceling trip:", error);
+    } catch (error: any) {
+      handleError(`Error canceling trip: ${error}`);
     }
   };
 
   const handleStartWithConfirmation = () => {
     if (!selectedTicket) {
+      handleError('No ticket selected');
       Alert.alert("Tidak ada tiket yg dipilih", "Silakan pilih tiket sebelum memulai pekerjaan.");
       return;
     }
@@ -312,8 +319,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
             setTime(elapsed);
           }
-        } catch (error) {
-          console.error("Error updating time:", error);
+        } catch (error: any) {
+          handleError(`Error updating time: ${error}`);
         }
       }, 1000);
     }
@@ -334,8 +341,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           setSelectedTicket(JSON.parse(storedTicket));
           setTracking(true);
         }
-      } catch (error) {
-        console.error("Error loading tracking data:", error);
+      } catch (error: any) {
+        handleError(`Error loading tracking data: ${error}`);
       }
     };
     loadTrackingData();
@@ -372,7 +379,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     });
     if (!result.canceled && result.assets.length > 0) {
       const photoUri = result.assets[0].uri;
-      // Add timestamp and location to photo
       const index = photos.length;
       const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
       if (processedUri) {
@@ -389,6 +395,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
         }
       } else {
+        handleError("Failed to process photo");
         Alert.alert("Gagal memproses foto", "Silakan coba lagi.");
       }
     }
@@ -433,9 +440,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   //     ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
   //     await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
-  //     // console.log(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
-  //   } catch (error) {
-  //     console.error("❌ Error saving photos locally:", error);
+  //     // handleLog(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
+  //   } catch (error: any) {
+  //     handleError("❌ Error saving photos locally:", error);
   //   }
   // };
 
@@ -445,20 +452,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       let storedData = await AsyncStorage.getItem("pendingUploads");
       let pendingUploads = storedData ? JSON.parse(storedData) : [];
       if (!Array.isArray(pendingUploads) || pendingUploads.length === 0) {
-        // console.log("📭 Tidak ada foto yang perlu diunggah.");
+        handleLog("Tidak ada foto yang perlu diunggah.");
         return;
       }
 
-      // console.log(`📦 Jumlah tiket dalam antrian: ${pendingUploads.length}`);
+      handleLog(`Jumlah tiket dalam antrian: ${pendingUploads.length}`);
       let updatedUploads = [...pendingUploads]; // Salinan array untuk diubah
       for (let i = 0; i < pendingUploads.length; i++) {
         const { ticket_id, user_id, photos } = pendingUploads[i];
         if (!ticket_id || !user_id || !Array.isArray(photos) || photos.length !== requiredPhotoCount) {
-          // console.error(`⚠️ Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
+          handleError(`Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
           continue;
         }
 
-        // console.log(`🚀 Memproses tiket ${ticket_id} dengan ${photos.length} foto.`);
+        handleLog(`Memproses tiket ${ticket_id} dengan ${photos.length} foto.`);
         const formData = new FormData();
         let isSuccess = true;
         for (let j = 0; j < photos.length; j++) {
@@ -469,14 +476,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             let retryCount = 0;
 
             while (!timestampedPhoto && retryCount < 3) {
-              // console.log(`🔄 Menunggu ulang pendingUploads[i].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
+              handleLog(`Menunggu ulang pendingUploads[i].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
               await new Promise(resolve => setTimeout(resolve, 5000));
               timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, pendingUploads[i].timestamp, pendingUploads[i].location);
               retryCount++;
             }
 
             if (!timestampedPhoto) {
-              console.error(`❌ Gagal menambahkan timestamp ke foto ${fileName}.`);
+              handleError(`Gagal menambahkan timestamp ke foto ${fileName}.`);
               isSuccess = false;
               break;
             }
@@ -491,21 +498,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             if (status === "granted") {
               await saveToLibraryAsync(timestampedPhoto);
             } else {
-              console.log("🚫 Izin untuk menyimpan ke galeri ditolak.");
+              handleLog("Izin untuk menyimpan ke galeri ditolak.");
             }
-          } catch (error) {
-            console.error(`❌ Gagal memproses foto ${j + 1} untuk tiket ${ticket_id}:`, error);
+          } catch (error: any) {
+            handleError(`Gagal memproses foto ${j + 1} untuk tiket ${ticket_id}: ${error}`);
             isSuccess = false;
             break;
           }
         }
 
         if (!isSuccess) {
-          // console.log(`⚠️ Tiket ${ticket_id} tidak dapat diproses, akan dicoba lagi nanti.`);
+          handleLog(`Tiket ${ticket_id} tidak dapat diproses, akan dicoba lagi nanti.`);
           continue;
         }
 
-        // console.log(`📤 Mengunggah semua foto untuk tiket ${ticket_id}...`);
+        handleLog(`Mengunggah semua foto untuk tiket ${ticket_id}...`);
         try {
           const response = await fetch(
             `${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`,
@@ -520,19 +527,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           );
 
           if (response.ok) {
-            // console.log(`✅ [${ticket_id}] Semua foto berhasil diunggah.`);
+            handleLog(`[${ticket_id}] Semua foto berhasil diunggah.`);
             updatedUploads = updatedUploads.filter(item => item.ticket_id !== ticket_id);
             await AsyncStorage.setItem("pendingUploads", JSON.stringify(updatedUploads));
-            // console.log(`🗑️ [${ticket_id}] Tiket dihapus dari antrian.`);
+            handleLog(`[${ticket_id}] Tiket dihapus dari antrian.`);
           } else {
-            console.error(`❌ [${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
+            handleError(`[${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
           }
-        } catch (error) {
-          console.error(`❌ [${ticket_id}] Error saat mengunggah:`, error);
+        } catch (error: any) {
+          handleError(`[${ticket_id}] Error saat mengunggah: ${error}`);
         }
       }
-    } catch (error) {
-      console.error("❌ Error dalam background upload:", error);
+    } catch (error: any) {
+      handleError(`Error dalam background upload: ${error}`);
     }
   };
 
@@ -722,8 +729,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           task: selectedTicket?.description || "-",
         }));
       }
-    } catch (error) {
-      console.error("Error fetching address:", error);
+    } catch (error: any) {
+      handleError(`Error fetching address: ${error}`);
     }
   };
 
@@ -1601,12 +1608,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* debug */}
         {/* <TouchableOpacity
-          onPress={handleDebugPhotoModal}
+              onPress={handleDebugPhotoModal}
           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
           className="items-center w-full px-8 py-4 mb-4 bg-gray-500 rounded-full"
-          activeOpacity={0.7}
-        >
-          <Text className="text-xl font-bold text-white">debug photo modal</Text>
+              activeOpacity={0.7}
+            >
+              <Text className="text-xl font-bold text-white">debug photo modal</Text>
         </TouchableOpacity>
 
         {ticketExtrasFlag && (
@@ -1622,83 +1629,84 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         {/* Start/Stop Button */}
         <TouchableOpacity
           onPress={tracking ? handleCompletetWithConfirmation : handleStartWithConfirmation}
-          className={`items-center w-full py-4 px-8 rounded-full ${tracking ? "bg-red-500" : "bg-[#059669]"}`}
+          className={`items-center w-full py-4 px-8 rounded-full ${isCompleting ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
           activeOpacity={0.7}
+          disabled={isCompleting}
         >
-          <Text className="text-xl font-bold text-white">
-            {tracking ? "Selesai" : "Mulai Bekerja"}
-          </Text>
+          {isCompleting ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text className="text-xl font-bold text-white">
+              {tracking ? "Selesai" : "Mulai Bekerja"}
+            </Text>
+          )}
         </TouchableOpacity>
 
         {/* Cancel Button */}
-        {
-          tracking && (
-            <TouchableOpacity
-              onPress={handleCanceltWithConfirmation}
-              className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
-              activeOpacity={0.7}
-            >
-              <Text className="text-xl font-bold text-white">Batalkan</Text>
-            </TouchableOpacity>
-          )
-        }
+        {tracking && (
+          <TouchableOpacity
+            onPress={handleCanceltWithConfirmation}
+            className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
+            activeOpacity={0.7}
+          >
+            <Text className="text-xl font-bold text-white">Batalkan</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Confirmation Modal to Start a Ticket */}
-      {
-        isConfirmationVisible && (
-          <Modal
-            visible={isConfirmationVisible}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setIsConfirmationVisible(false)}
-          >
-            <View className="items-center justify-center flex-1 px-4 bg-black/50">
-              <View className="w-full max-w-md p-6 bg-white rounded-lg">
-                <Text className="mb-4 text-xl font-semibold text-gray-800">
-                  Konfirmasi Mulai
+      {isConfirmationVisible && (
+        <Modal
+          visible={isConfirmationVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsConfirmationVisible(false)}
+        >
+          <View className="items-center justify-center flex-1 px-4 bg-black/50">
+            <View className="w-full max-w-md p-6 bg-white rounded-lg">
+              <Text className="mb-4 text-xl font-semibold text-gray-800">
+                Konfirmasi Mulai
+              </Text>
+              <Text className="text-sm text-gray-600">
+                Apakah Anda yakin ingin memulai pekerjaan?
+              </Text>
+              <View className="my-4 gap-y-2">
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id}
                 </Text>
                 <Text className="text-sm text-gray-600">
-                  Apakah Anda yakin ingin memulai pekerjaan?
+                  <Text className="font-bold">ID Tempat:</Text> {selectedTicket?.geofence_id}
                 </Text>
-                <View className="my-4 gap-y-2">
-                  <Text className="text-sm text-gray-600">
-                    <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id}
-                  </Text>
-                  <Text className="text-sm text-gray-600">
-                    <Text className="font-bold">ID Tempat:</Text> {selectedTicket?.geofence_id}
-                  </Text>
-                  <Text className="text-sm text-gray-600">
-                    <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description}
-                  </Text>
-                  <Text className="text-sm text-gray-600">
-                    <Text className="font-bold">Tempat tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket?.geofence_id)?.description}
-                  </Text>
-                </View>
-                <View className="flex-row justify-between mt-4">
-                  {/* Tombol Batal */}
-                  <TouchableOpacity
-                    onPress={() => setIsConfirmationVisible(false)}
-                    className="px-6 py-3 bg-gray-300 rounded-lg"
-                  >
-                    <Text className="text-sm font-semibold text-gray-700">Batal</Text>
-                  </TouchableOpacity>
-                  {/* Tombol Ya */}
-                  <TouchableOpacity
-                    onPress={() => {
-                      setIsConfirmationVisible(false);
-                      handleStart();
-                    }}
-                    className="px-6 py-3 bg-blue-500 rounded-lg"
-                  >
-                    <Text className="text-sm font-semibold text-white">Ya</Text>
-                  </TouchableOpacity>
-                </View>
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description}
+                </Text>
+                <Text className="text-sm text-gray-600">
+                  <Text className="font-bold">Tempat tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket?.geofence_id)?.description}
+                </Text>
+              </View>
+              <View className="flex-row justify-between mt-4">
+                {/* Tombol Batal */}
+                <TouchableOpacity
+                  onPress={() => setIsConfirmationVisible(false)}
+                  className="px-6 py-3 bg-gray-300 rounded-lg"
+                >
+                  <Text className="text-sm font-semibold text-gray-700">Batal</Text>
+                </TouchableOpacity>
+                {/* Tombol Ya */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsConfirmationVisible(false);
+                    handleStart();
+                  }}
+                  className="px-6 py-3 bg-blue-500 rounded-lg"
+                >
+                  <Text className="text-sm font-semibold text-white">Ya</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          </Modal>
-        )
-      }
+          </View>
+        </Modal>
+      )}
     </ScrollView >
   );
 };
