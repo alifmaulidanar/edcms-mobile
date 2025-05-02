@@ -258,6 +258,16 @@ export const startUploadService = async () => {
     parameters: {
       delay: 1000
     },
+    // Add foreground service type for Android 14+ compatibility
+    progressBar: {
+      max: 100,
+      value: 0,
+      indeterminate: true,
+    },
+    // Required for Android 14 (API level 34)
+    androidConfig: {
+      foregroundServiceType: ['dataSync', 'location'],
+    },
   };
   try {
     await BackgroundJob.start(uploadWorker, options);

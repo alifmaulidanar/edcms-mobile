@@ -45,6 +45,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [additionalInfoModalVisible, setAdditionalInfoModalVisible] = useState(false);
   const [ticketExtrasModalVisible, setTicketExtrasModalVisible] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
@@ -202,7 +203,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     try {
       if (selectedTicket?.ticket_id) {
         await stopBackgroundTracking(selectedTicket.ticket_id); // Stop Radar location tracking
-        startUploadService(); // Start background photo upload
+        try {
+          await startUploadService(); // Start background photo upload
+        } catch (error) {
+          handleError(`Failed to start upload service: ${error}`);
+          // Continue even if service failed to start
+        }
         await AsyncStorage.removeItem("startTime");
         setTracking(false); // Reset state
         setPhotos([]);
@@ -829,10 +835,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">SN EDC</Text>
                     <TextInput
-                      value={formData.sn_edc}
+                      value={formData.sn_edc || selectedTicket?.additional_info?.sn_edc}
                       onChangeText={(text) => handleInputChangeTicketExtras("sn_edc", text)}
                       // placeholder="SN EDC"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
+                    // className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                     />
                   </View>
                 </View>
@@ -840,19 +847,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">MID MTI</Text>
                     <TextInput
-                      value={formData.mid_mti}
+                      // value={formData.mid_mti}
+                      value={selectedTicket?.additional_info?.mid}
                       onChangeText={(text) => handleInputChangeTicketExtras("mid_mti", text)}
                       // placeholder="MID MTI"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">TID MTI</Text>
                     <TextInput
-                      value={formData.tid_mti}
+                      // value={formData.tid_mti}
+                      value={selectedTicket?.additional_info?.tid}
                       onChangeText={(text) => handleInputChangeTicketExtras("tid_mti", text)}
                       // placeholder="TID MTI"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                 </View>
@@ -860,19 +873,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">SIM Card</Text>
                     <TextInput
-                      value={formData.sim_card}
+                      // value={formData.sim_card}
+                      value={selectedTicket?.additional_info?.sn_sim_card}
                       onChangeText={(text) => handleInputChangeTicketExtras("sim_card", text)}
                       // placeholder="SIM Card"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">SAM Card</Text>
                     <TextInput
-                      value={formData.sam_card}
+                      // value={formData.sam_card}
+                      value={selectedTicket?.additional_info?.sn_sam_card}
                       onChangeText={(text) => handleInputChangeTicketExtras("sam_card", text)}
                       // placeholder="SAM Card"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                 </View>
@@ -894,9 +913,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Catatan/Notes</Text>
                     <TextInput
-                      value={formData.edc_notes}
+                      value={formData.edc_notes || selectedTicket?.additional_info?.noted}
                       onChangeText={(text) => handleInputChangeTicketExtras("edc_notes", text)}
-                      // placeholder="Catatan/Notes"
                       multiline
                       numberOfLines={3}
                       textAlignVertical="top"
@@ -1006,10 +1024,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">MID MTI</Text>
                     <TextInput
-                      value={formData.mid_mti}
+                      // value={formData.mid_mti}
+                      value={selectedTicket?.additional_info?.mid}
                       onChangeText={(text) => handleInputChangeTicketExtras("mid_mti", text)}
                       // placeholder="MID MTI"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
@@ -1026,10 +1047,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">TID MTI</Text>
                     <TextInput
-                      value={formData.tid_mti}
+                      // value={formData.tid_mti}
+                      value={selectedTicket?.additional_info?.tid}
                       onChangeText={(text) => handleInputChangeTicketExtras("tid_mti", text)}
                       // placeholder="TID MTI"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
@@ -1122,19 +1146,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Signal Bar</Text>
                     <TextInput
-                      value={formData.signal_bar}
+                      // value={formData.signal_bar}
+                      value={selectedTicket?.additional_info?.signal_bar}
                       onChangeText={(text) => handleInputChangeTicketExtras("signal_bar", text)}
                       // placeholder="TID MTI"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Signal Type</Text>
                     <TextInput
-                      value={formData.signal_type}
+                      // value={formData.signal_type}
+                      value={selectedTicket?.additional_info?.signal_type}
                       onChangeText={(text) => handleInputChangeTicketExtras("signal_type", text)}
                       // placeholder="Signal Type"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                 </View>
@@ -1183,7 +1213,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Lokasi</Text>
                     <TextInput
-                      value={geofence.find((t) => t.external_id === selectedTicket?.geofence_id)?.coordinates?.join(", ") || ""}
+                      value={geofence.find((t) => t.external_id === selectedTicket?.geofence_id)?.coordinates?.join(", ")}
                       onChangeText={(text) => handleInputChangeTicketExtras("merchant_location", text)}
                       // placeholder="Lokasi"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
@@ -1195,7 +1225,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Nama PIC</Text>
                     <TextInput
-                      value={formData.pic_name}
+                      // value={formData.pic_name}
+                      value={formData.pic_name || selectedTicket?.additional_info?.contact_person_merchant}
                       onChangeText={(text) => handleInputChangeTicketExtras("pic_name", text)}
                       // placeholder="Nama PIC"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
@@ -1204,7 +1235,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">No. Telepon PIC</Text>
                     <TextInput
-                      value={formData.pic_phone}
+                      // value={formData.pic_phone}
+                      value={formData.pic_phone || selectedTicket?.additional_info?.phone_merchant}
                       onChangeText={(text) => handleInputChangeTicketExtras("pic_phone", text)}
                       // placeholder="No. Telepon PIC"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
@@ -1225,10 +1257,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Prioritas EDC</Text>
                     <TextInput
-                      value={formData.edc_priority}
+                      // value={formData.edc_priority}
+                      value={selectedTicket?.additional_info?.priority_edc}
                       onChangeText={(text) => handleInputChangeTicketExtras("edc_priority", text)}
                       // placeholder="Prioritas EDC"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
+                      editable={false}
                     />
                   </View>
                 </View>
@@ -1279,7 +1314,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Komentar Merchant</Text>
                     <TextInput
-                      value={formData.merchant_comment}
+                      // value={formData.merchant_comment}
+                      value={formData.merchant_comment || selectedTicket?.additional_info?.merchant_comment}
                       onChangeText={(text) => handleInputChangeTicketExtras("merchant_comment", text)}
                       // placeholder="Komentar Merchant"
                       multiline
@@ -1298,7 +1334,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">EDC yang sering digunakan</Text>
                     <TextInput
-                      value={formData.usual_edc}
+                      // value={formData.usual_edc}
+                      value={formData.usual_edc || selectedTicket?.additional_info?.edc_yang_sering_digunakan}
                       onChangeText={(text) => handleInputChangeTicketExtras("usual_edc", text)}
                       // placeholder="EDC yang sering digunakan"
                       multiline
@@ -1312,7 +1349,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">EDC Lainnya</Text>
                     <TextInput
-                      value={formData.other_edc}
+                      // value={formData.other_edc}
+                      value={formData.other_edc || selectedTicket?.additional_info?.edc_bank_lainnya}
                       onChangeText={(text) => handleInputChangeTicketExtras("other_edc", text)}
                       // placeholder="EDC Lainnya"
                       multiline
@@ -1326,7 +1364,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Permintaan Merchant (Request)</Text>
                     <TextInput
-                      value={formData.merchant_request}
+                      // value={formData.merchant_request}
+                      value={formData.merchant_request || selectedTicket?.additional_info?.merchant_request}
                       onChangeText={(text) => handleInputChangeTicketExtras("merchant_request", text)}
                       // placeholder="Permintaan Merchant (Request)"
                       multiline
@@ -1340,7 +1379,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Promo Material</Text>
                     <TextInput
-                      value={formData.promo_material}
+                      // value={formData.promo_material}
+                      value={formData.promo_material || selectedTicket?.additional_info?.promo_matrial_}
                       onChangeText={(text) => handleInputChangeTicketExtras("promo_material", text)}
                       // placeholder="Promo Material"
                       multiline
@@ -1451,7 +1491,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
                     </Text>
                     <TouchableOpacity
-                      onPress={() => setTicketExtrasModalVisible(true)}
+                      onPress={() => setAdditionalInfoModalVisible(true)}
                       className="items-center w-full px-1 py-2 bg-blue-500 rounded-full"
                       activeOpacity={0.7}
                       style={{ zIndex: 2 }}
@@ -1463,10 +1503,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
                 {/* Modal for Additional Info */}
                 <Modal
-                  visible={ticketExtrasModalVisible}
+                  visible={additionalInfoModalVisible}
                   animationType="slide"
                   transparent
-                  onRequestClose={() => setTicketExtrasModalVisible(false)}
+                  onRequestClose={() => setAdditionalInfoModalVisible(false)}
                 >
                   <View className="items-center justify-center flex-1 bg-black bg-opacity-50">
                     <View className="w-11/12 max-w-md p-4 bg-white rounded-lg">
@@ -1486,7 +1526,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                         </View>
                       </ScrollView>
                       <TouchableOpacity
-                        onPress={() => setTicketExtrasModalVisible(false)}
+                        onPress={() => setAdditionalInfoModalVisible(false)}
                         className="py-2 mt-4 bg-gray-300 rounded-full"
                       >
                         <Text className="font-bold text-center text-gray-800">Tutup</Text>

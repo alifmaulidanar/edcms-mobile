@@ -2,7 +2,7 @@
   "expo": {
     "name": "PastiMS EDC",
     "slug": "pastims-edc",
-    "version": "1.2.8",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/logo/mdm-logo.png",
     "userInterfaceStyle": "light",
@@ -34,6 +34,7 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
