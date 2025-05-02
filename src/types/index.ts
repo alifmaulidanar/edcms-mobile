@@ -36,6 +36,7 @@ export interface Ticket {
   status: string;
   created_at: string;
   updated_at: string;
+  additional_info?: any;
 }
 
 export interface Geofence {

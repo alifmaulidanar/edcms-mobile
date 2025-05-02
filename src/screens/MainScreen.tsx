@@ -5,24 +5,24 @@ import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
+import NetInfo from '@react-native-community/netinfo';
 import { Geofence, QueueItem, Ticket } from '../types';
 import { getCurrentPositionAsync } from 'expo-location';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
+import { requestPermissionsAsync } from 'expo-media-library';
 import React, { useState, useEffect, useCallback } from "react";
 import { getTickets, updateTicketExtras } from '../api/tickets';
 import { startUploadService } from "../utils/backgroundUploader";
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
-import { requestPermissionsAsync, saveToLibraryAsync } from 'expo-media-library';
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator, TextInput } from "react-native";
 
-const requiredPhotoCount = parseInt(process.env.EXPO_PUBLIC_REQUIRED_PHOTO_COUNT);
+const requiredPhotoCount = parseInt(process.env.EXPO_PUBLIC_REQUIRED_PHOTO_COUNT || '8');
 const ticketExtrasFlag = process.env.EXPO_PUBLIC_FEATURE_FLAG_ENABLE_TICKET_EXTRAS;
 
 type RootStackParamList = {
@@ -34,15 +34,6 @@ type RootStackParamList = {
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, "Main">;
-
-const compressImage = async (uri: string) => {
-  const manipResult = await manipulateAsync(
-    uri,
-    [{ resize: { width: 800 } }], // Resize to a width of 800px
-    { compress: 0.4, format: SaveFormat.JPEG, base64: true }, // Compress to 40%
-  );
-  return manipResult.uri;
-};
 
 const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [currentLocation, setCurrentLocation] = useState<any>(null);
@@ -65,30 +56,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [isPhotoProcessed, setIsPhotoProcessed] = useState(false);
   const [isSubmittingTicketExtras, setIsSubmittingTicketExtras] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
 
   useEffect(() => {
-    // const fetchData = async () => {
-    // AsyncStorage.removeItem("pendingUploads");
-    // AsyncStorage.removeItem("uploadQueue");
-    // AsyncStorage.removeItem("failedUploads");
-    // const userData = await AsyncStorage.getItem("userData");
-    // const session = await AsyncStorage.getItem("session");
-    // const parsedUserData = userData ? JSON.parse(userData) : null;
-    // const pending = AsyncStorage.getItem("pendingUploads");
-    // const queue = AsyncStorage.getItem("uploadQueue");
-    // const failed = AsyncStorage.getItem("failedUploads");
-    // handleLog('session:', session);
-    // handleLog('User data:', parsedUserData);
-    // handleLog('Pending:', pending);
-    // handleLog('Queue:', queue);
-    // handleLog('Failed:', failed);
-    // };
-    // fetchData();
-    const interval = setInterval(uploadPendingPhotos, 60000);
-    return () => clearInterval(interval);
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -106,8 +83,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         const isRunning = BackgroundJob.isRunning();
         handleLog(`Background service status: ${isRunning}`);
         if (!isRunning && queue && JSON.parse(queue).length > 0) {
-          handleLog('Starting background service...');
-          await startUploadService();
+          try {
+            await startUploadService();
+            handleLog('Starting background service...');
+          } catch (error) {
+            handleError(`Gagal memulai BackgroundJob: ${error}`);
+          }
         }
       } catch (error: any) {
         handleError(`Init error: ${error}`);
@@ -169,6 +150,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert("Tidak ada tiket yg dipilih", "Silakan pilih tiket sebelum memulai pekerjaan.");
       return;
     }
+    if (!geofence || geofence.length === 0) {
+      handleError("Data geofence belum siap. Proses dibatalkan.");
+      return;
+    }
 
     try {
       const startTime = Date.now();
@@ -199,6 +184,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
     if (photos.length < requiredPhotoCount) {
+      const { status } = await requestPermissionsAsync();
+      if (status !== 'granted') {
+        handleError('Izin lokasi tidak diberikan');
+        return;
+      }
       const location = await getCurrentPositionAsync({});
       setTimestamp(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss")); // timestamp
       setCurrentLocation(location); // current location
@@ -237,15 +227,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       handleError(`Error stopping trip: ${error}`);
     }
   };
-
-  // debug photo modal
-  // const handleDebugPhotoModal = async () => {
-  //   setPhotoModalVisible(true);
-  // }
-
-  // const handleDebugTicketExtrasModal = async () => {
-  //   setTicketExtrasModalVisible(true);
-  // }
 
   // Handle Cancel Tracking (Cancel Trip)
   const handleCancel = async () => {
@@ -382,6 +363,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       const index = photos.length;
       const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
       if (processedUri) {
+        if (photos.length >= requiredPhotoCount) {
+          Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
+          return;
+        }
         if (photos.length < requiredPhotoCount) {
           const newPhotos = [...photos, processedUri];
           setPhotos(newPhotos);
@@ -421,126 +406,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         },
       ]
     );
-  };
-
-  // Handle saving photos locally
-  // const savePhotoLocally = async (photoUris: string[], ticketId: string, userId: string) => {
-  //   try {
-  //     const storedData = await AsyncStorage.getItem("pendingUploads");
-  //     let pendingUploads = storedData ? JSON.parse(storedData) : [];
-  //     if (!Array.isArray(pendingUploads)) {
-  //       pendingUploads = [];
-  //     }
-
-  //     let ticketData = pendingUploads.find((item: any) => item.ticket_id === ticketId);
-  //     if (!ticketData) {
-  //       ticketData = { ticket_id: ticketId, user_id: userId, photos: [], timestamp: timestamp, location: currentLocation };
-  //       pendingUploads.push(ticketData);
-  //     }
-
-  //     ticketData.photos = Array.from(new Set([...ticketData.photos, ...photoUris]));
-  //     await AsyncStorage.setItem("pendingUploads", JSON.stringify(pendingUploads));
-  //     // handleLog(`✅ Semua foto untuk tiket ${ticketId} telah disimpan.`);
-  //   } catch (error: any) {
-  //     handleError("❌ Error saving photos locally:", error);
-  //   }
-  // };
-
-  // Background photo upload
-  const uploadPendingPhotos = async () => {
-    try {
-      let storedData = await AsyncStorage.getItem("pendingUploads");
-      let pendingUploads = storedData ? JSON.parse(storedData) : [];
-      if (!Array.isArray(pendingUploads) || pendingUploads.length === 0) {
-        handleLog("Tidak ada foto yang perlu diunggah.");
-        return;
-      }
-
-      handleLog(`Jumlah tiket dalam antrian: ${pendingUploads.length}`);
-      let updatedUploads = [...pendingUploads]; // Salinan array untuk diubah
-      for (let i = 0; i < pendingUploads.length; i++) {
-        const { ticket_id, user_id, photos } = pendingUploads[i];
-        if (!ticket_id || !user_id || !Array.isArray(photos) || photos.length !== requiredPhotoCount) {
-          handleError(`Data tiket ${ticket_id} tidak valid, melewati tiket ini...`);
-          continue;
-        }
-
-        handleLog(`Memproses tiket ${ticket_id} dengan ${photos.length} foto.`);
-        const formData = new FormData();
-        let isSuccess = true;
-        for (let j = 0; j < photos.length; j++) {
-          try {
-            const compressedUri = await compressImage(photos[j]);
-            const fileName = `${ticket_id}-${photos[j].timestamp}-${j + 1}.jpg`;
-            let timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, pendingUploads[i].timestamp, pendingUploads[i].location);
-            let retryCount = 0;
-
-            while (!timestampedPhoto && retryCount < 3) {
-              handleLog(`Menunggu ulang pendingUploads[i].timestamp untuk ${fileName}... Percobaan ke-${retryCount + 1}`);
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              timestampedPhoto = await addTimestampToPhoto(compressedUri, fileName, pendingUploads[i].timestamp, pendingUploads[i].location);
-              retryCount++;
-            }
-
-            if (!timestampedPhoto) {
-              handleError(`Gagal menambahkan timestamp ke foto ${fileName}.`);
-              isSuccess = false;
-              break;
-            }
-
-            formData.append("photos", {
-              uri: timestampedPhoto,
-              type: "image/jpeg",
-              name: fileName,
-            } as any);
-
-            const { status } = await requestPermissionsAsync();
-            if (status === "granted") {
-              await saveToLibraryAsync(timestampedPhoto);
-            } else {
-              handleLog("Izin untuk menyimpan ke galeri ditolak.");
-            }
-          } catch (error: any) {
-            handleError(`Gagal memproses foto ${j + 1} untuk tiket ${ticket_id}: ${error}`);
-            isSuccess = false;
-            break;
-          }
-        }
-
-        if (!isSuccess) {
-          handleLog(`Tiket ${ticket_id} tidak dapat diproses, akan dicoba lagi nanti.`);
-          continue;
-        }
-
-        handleLog(`Mengunggah semua foto untuk tiket ${ticket_id}...`);
-        try {
-          const response = await fetch(
-            `${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${ticket_id}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "multipart/form-data",
-                "user_id": user_id,
-              },
-              body: formData,
-            }
-          );
-
-          if (response.ok) {
-            handleLog(`[${ticket_id}] Semua foto berhasil diunggah.`);
-            updatedUploads = updatedUploads.filter(item => item.ticket_id !== ticket_id);
-            await AsyncStorage.setItem("pendingUploads", JSON.stringify(updatedUploads));
-            handleLog(`[${ticket_id}] Tiket dihapus dari antrian.`);
-          } else {
-            handleError(`[${ticket_id}] Gagal mengunggah foto, akan dicoba lagi nanti.`);
-          }
-        } catch (error: any) {
-          handleError(`[${ticket_id}] Error saat mengunggah: ${error}`);
-        }
-      }
-    } catch (error: any) {
-      handleError(`Error dalam background upload: ${error}`);
-    }
   };
 
   const photoTitles = [
@@ -705,6 +570,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       });
       onRefresh();
     } catch (error) {
+      handleError(`Error submitting ticket extras: ${error}`);
       setIsSubmittingTicketExtras(false);
       alert("Terjadi kesalahan!");
     }
@@ -752,10 +618,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
 
+      {/* Internet Status Badge */}
+      <View className="mt-4">
+        <Text className={`text-sm font-bold text-center py-2 px-4 rounded-full ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+          {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
+        </Text>
+      </View>
+
       {/* Tickets Dropdown */}
       <View className="mt-4">
         <Text className="mb-2 text-lg font-bold">Pilih Tiket yang Tersedia</Text>
         <Picker
+          mode="dialog"
           selectedValue={selectedTicket?.id || null}
           onValueChange={(value: any) => {
             const ticket = tickets.find((t) => t.id === value);
@@ -770,7 +644,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             .map((ticket) => {
               const geofenceDescription = geofence.find((g) => g.external_id === ticket.geofence_id)?.description || ticket.description;
               return (
-                <Picker.Item key={ticket.id} label={`${geofenceDescription} - ${ticket.description}`} value={ticket.id} />
+                <Picker.Item style={{ fontSize: 12 }} key={ticket.id} label={`${geofenceDescription} - ${ticket.additional_info?.tipe_tiket || ticket.description} - MID: ${ticket.additional_info?.mid || ''} - TID: ${ticket.additional_info?.tid || ''}`} value={ticket.id} />
               );
             })}
         </Picker>
@@ -781,11 +655,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         visible={photoModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => { if (!isUploading) setPhotoModalVisible(false) }}
+        onRequestClose={() => {
+          if (!isUploading && photoModalVisible) {
+            setPhotoModalVisible(false);
+          }
+        }}
       >
         <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
           <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
-            <Text className="mb-2 text-lg font-bold">Ambil 8 Bukti Foto.</Text>
+            <Text className={`text-sm font-bold text-center py-2 px-4 rounded-full ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+              {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
+            </Text>
+            <Text className="mb-2 text-lg font-bold">Ambil {requiredPhotoCount} Bukti Foto.</Text>
             <Text className="mb-4 text-gray-500">Ambil {requiredPhotoCount} foto berikut untuk menyelesaikan tiket.</Text>
 
             {/* Photo Grid */}
@@ -830,11 +711,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 onPress={async () => {
                   if (!selectedTicket || !userData) return;
                   setIsUploading(true);
-                  // await savePhotoLocally(photos, selectedTicket.ticket_id, userData.user_id);
                   handleStop();
                 }}
-                className="items-center px-8 py-4 my-4 bg-blue-500 rounded-full"
+                className={`items-center px-8 py-4 my-4 rounded-full ${!isConnected ? "bg-gray-300" : "bg-blue-500"}`}
                 activeOpacity={0.7}
+                disabled={!isConnected}
               >
                 {isUploading ? (
                   <ActivityIndicator color="white" />
@@ -849,9 +730,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     handleTakePhoto();
                   }
                 }}
-                className={`items-center px-8 py-4 my-4 rounded-full ${isPhotoProcessed ? "bg-gray-300" : "bg-[#059669]"}`}
+                className={`items-center px-8 py-4 my-4 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"}`}
                 activeOpacity={0.7}
-                disabled={isPhotoProcessed}
+                disabled={isPhotoProcessed || !isConnected}
               >
                 {isPhotoProcessed ? (
                   <ActivityIndicator color="white" />
@@ -877,7 +758,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             {/* Close Modal Button */}
             <TouchableOpacity
               disabled={isUploading}
-              onPress={() => setPhotoModalVisible(false)}
+              onPress={() => { setPhotoModalVisible(false); setIsUploading(false); setIsCompleting(false); }}
               className={`items-center px-4 py-2 rounded-full ${isUploading ? "bg-gray-300" : "bg-gray-400"}`}
               activeOpacity={0.7}
             >
@@ -1520,16 +1401,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             </ScrollView>
 
             {/* Close Modal Button */}
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={() => setTicketExtrasModalVisible(false)}
               className={`items-center px-4 py-2 rounded-full ${isSubmittingTicketExtras ? "bg-gray-300" : "bg-gray-400"}`}
               activeOpacity={0.7}
-              disabled={isSubmittingTicketExtras}
+              disabled
             >
               <Text className="text-lg font-bold text-white">
                 {isSubmittingTicketExtras ? "Sedang memproses..." : "Tutup"}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </View>
       </Modal >
@@ -1556,6 +1437,63 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 <Text className="text-center text-gray-600">
                   <Text className="font-bold">Lokasi Tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.description}
                 </Text>
+                {selectedTicket?.additional_info && (
+                  <>
+                    <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
+                      <Text className="text-center text-gray-600">
+                        <Text className="font-bold">MID:</Text> {selectedTicket.additional_info?.mid || '-'}
+                      </Text>
+                      <Text className="text-center text-gray-600">
+                        <Text className="font-bold">TID:</Text> {selectedTicket.additional_info?.tid || '-'}
+                      </Text>
+                    </View>
+                    <Text className="text-center text-gray-600">
+                      <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setTicketExtrasModalVisible(true)}
+                      className="items-center w-full px-1 py-2 bg-blue-500 rounded-full"
+                      activeOpacity={0.7}
+                      style={{ zIndex: 2 }}
+                    >
+                      <Text className="text-sm font-bold text-white">Lihat Info Tambahan</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {/* Modal for Additional Info */}
+                <Modal
+                  visible={ticketExtrasModalVisible}
+                  animationType="slide"
+                  transparent
+                  onRequestClose={() => setTicketExtrasModalVisible(false)}
+                >
+                  <View className="items-center justify-center flex-1 bg-black bg-opacity-50">
+                    <View className="w-11/12 max-w-md p-4 bg-white rounded-lg">
+                      <Text className="mb-4 text-xl font-bold text-center">Detail Tambahan</Text>
+                      <ScrollView style={{ maxHeight: 400 }}>
+                        <View className="flex-row flex-wrap">
+                          {Object.entries(selectedTicket?.additional_info || {}).map(([key, value]) => (
+                            <View key={key} className="w-1/2 px-2 mb-4">
+                              <Text className="text-sm font-semibold text-gray-700">{key}</Text>
+                              <Text className="mt-1 text-sm text-gray-900">
+                                {typeof value === "object"
+                                  ? JSON.stringify(value)
+                                  : String(value)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                      <TouchableOpacity
+                        onPress={() => setTicketExtrasModalVisible(false)}
+                        className="py-2 mt-4 bg-gray-300 rounded-full"
+                      >
+                        <Text className="font-bold text-center text-gray-800">Tutup</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
               </View>
             )}
           </View>
@@ -1564,14 +1502,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           )}
 
           {/* Idle */}
-          {!tracking && (
+          {!tracking ? (
             <LottieView
               source={require('../../assets/animations/idle1.json')}
               autoPlay
               loop
               style={{
                 position: 'absolute',
-                top: '50%',
+                top: '65%',
                 left: '50%',
                 transform: [
                   { translateX: -150 },
@@ -1582,17 +1520,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 zIndex: 1,
               }}
             />
+          ) : (
+            <Text className="absolute text-2xl font-bold text-gray-500">
+              {/* {tracking ? "Sedang Bekerja..." : "Idle"} */}
+            </Text>
           )}
 
           {/* Working */}
-          {tracking && (
+          {tracking ? (
             <LottieView
               source={require('../../assets/animations/working1.json')}
               autoPlay
               loop
               style={{
                 position: 'absolute',
-                top: '50%',
+                top: '65%',
                 left: '50%',
                 transform: [
                   { translateX: -150 },
@@ -1603,35 +1545,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 zIndex: 1,
               }}
             />
+          ) : (
+            <Text className="absolute text-2xl font-bold text-gray-500">
+              {/* {tracking ? "Sedang Bekerja..." : "Idle"} */}
+            </Text>
           )}
         </View>
-
-        {/* debug */}
-        {/* <TouchableOpacity
-              onPress={handleDebugPhotoModal}
-          +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-          className="items-center w-full px-8 py-4 mb-4 bg-gray-500 rounded-full"
-              activeOpacity={0.7}
-            >
-              <Text className="text-xl font-bold text-white">debug photo modal</Text>
-        </TouchableOpacity>
-
-        {ticketExtrasFlag && (
-          <TouchableOpacity
-            onPress={handleDebugTicketExtrasModal}
-            className="items-center w-full px-8 py-4 mb-4 bg-gray-500 rounded-full"
-            activeOpacity={0.7}
-          >
-            <Text className="text-xl font-bold text-white">debug ticket extras</Text>
-          </TouchableOpacity>
-        )} */}
 
         {/* Start/Stop Button */}
         <TouchableOpacity
           onPress={tracking ? handleCompletetWithConfirmation : handleStartWithConfirmation}
-          className={`items-center w-full py-4 px-8 rounded-full ${isCompleting ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
+          className={`items-center w-full py-4 px-8 rounded-full ${isCompleting || !isConnected ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
           activeOpacity={0.7}
-          disabled={isCompleting}
+          disabled={isCompleting || !isConnected}
         >
           {isCompleting ? (
             <ActivityIndicator color="white" />
@@ -1648,6 +1574,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             onPress={handleCanceltWithConfirmation}
             className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
             activeOpacity={0.7}
+            disabled={!isConnected}
           >
             <Text className="text-xl font-bold text-white">Batalkan</Text>
           </TouchableOpacity>

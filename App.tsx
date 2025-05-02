@@ -1,5 +1,7 @@
 import "./global.css";
 import { Provider } from "react-redux";
+import supabase from "./src/utils/supabase";
+import { Session } from "@supabase/supabase-js";
 import React, { useEffect, useState } from "react";
 import store, { setUser } from "./src/store/index";
 import { initializeRadar } from "./src/utils/radar";
@@ -51,6 +53,7 @@ export default function App() {
   StatusBar.setBackgroundColor("transparent");
   StatusBar.setTranslucent(true);
 
+  const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -80,6 +83,13 @@ export default function App() {
     const publishableKey = process.env.EXPO_PUBLIC_RADAR_PUBLISHABLE_KEY as string;
     initializeRadar(publishableKey);
 
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+    })
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
     // Load user data from AsyncStorage
     const loadUserData = async () => {
       try {
@@ -87,6 +97,9 @@ export default function App() {
         if (storedUserData) {
           const user = JSON.parse(storedUserData);
           store.dispatch(setUser(user)); // Set user in Redux
+          setIsLoggedIn(true);
+        }
+        if (session) {
           setIsLoggedIn(true);
         }
       } catch (error: any) {

@@ -53,6 +53,21 @@ const getSanitizedQueue = async () => {
 
 const processPhoto = async (photoUri: string, ticketId: string, timestamp: string, location: any, index: number) => {
   try {
+    if (!photoUri || typeof photoUri !== 'string') {
+      handleError('Invalid photo URI');
+      throw new Error('Invalid photo URI');
+    }
+
+    if (!ticketId || typeof ticketId !== 'string') {
+      handleError('Invalid ticket ID');
+      throw new Error('Invalid ticket ID');
+    }
+
+    if (!timestamp || typeof timestamp !== 'string') {
+      handleError('Invalid timestamp');
+      throw new Error('Invalid timestamp');
+    }
+
     // Compression dan resize 
     const compressed = await manipulateAsync(
       photoUri,
@@ -68,13 +83,20 @@ const processPhoto = async (photoUri: string, ticketId: string, timestamp: strin
     //   location
     // );
 
-    // Save to library
-    if (compressed.uri) {
-      await saveToLibraryAsync(compressed.uri);
-    } else {
-      handleLog('Gagal simpan ke galeri, lanjutkan upload...');
+    if (!compressed.uri) {
+      handleError('Failed to compress photo');
+      throw new Error('Failed to compress photo');
     }
-    await deleteAsync(photoUri, { idempotent: true });
+
+    // Save to library
+    await saveToLibraryAsync(compressed.uri).catch((err) => {
+      handleError(`Failed to save photo to library: ${err}`);
+    });
+
+    // Delete original photo
+    await deleteAsync(photoUri, { idempotent: true }).catch((err) => {
+      handleError(`Failed to delete original photo: ${err}`);
+    });
     return compressed.uri;
   } catch (error: any) {
     handleError(`Gagal memproses foto: ${error}`);
@@ -89,19 +111,21 @@ const uploadWorker = async (taskData: any) => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       const queue = await getSanitizedQueue();
       if (queue.length === 0) {
-        if (emptyQueueRetry++ > 3) {
+        emptyQueueRetry++;
+        if (emptyQueueRetry > 3) {
           await BackgroundJob.updateNotification({
             taskDesc: 'Tidak ada pekerjaan yang tertunda',
             progressBar: { max: 100, value: 100 }
           });
+          handleLog("No pending uploads. Stopping background job.");
           await stopUploadService();
           break;
         }
         await new Promise(resolve => setTimeout(resolve, 5000));
         continue;
       }
-      emptyQueueRetry = 0;
 
+      emptyQueueRetry = 0;
       const currentJob = queue[0];
       if (!isValidQueueItem(currentJob)) {
         handleError(`Data tiket korup, dilewati: ${JSON.stringify(currentJob)}`);
@@ -155,6 +179,10 @@ const uploadWorker = async (taskData: any) => {
           processedPhotos.push(processedUri);
         }
 
+        if (processedPhotos.length === 0) {
+          throw new Error('No photos were successfully processed.');
+        }
+
         // Upload to server
         const formData = new FormData();
         processedPhotos.forEach((uri, index) => {
@@ -173,11 +201,15 @@ const uploadWorker = async (taskData: any) => {
           body: formData,
         });
 
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         // Delete current job from queue if success
         if (response.ok) {
           const newQueue = queue.slice(1);
           await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
-          await Promise.all(processedPhotos.map(uri => deleteAsync(uri, { idempotent: true })));
+          await Promise.all(processedPhotos.filter((uri): uri is string => uri !== null).map(uri => deleteAsync(uri, { idempotent: true })));
         }
       } catch (error) {
         handleError(`Gagal memproses tiket: ${error}`);
@@ -191,15 +223,15 @@ const uploadWorker = async (taskData: any) => {
           const newFailed = [currentJob, ...failed].slice(0, MAX_FAILED_QUEUE_SIZE);
           await AsyncStorage.setItem('failedQueue', JSON.stringify(newFailed));
           handleLog(`[${new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' })}] Tiket ${currentJob.ticket_id} gagal, attempts: ${currentJob.attempts || 0}`);
-          await scheduleNotificationAsync({
-            content: {
-              title: 'Gagal mengunggah foto',
-              body: `Tiket ${currentJob.ticket_id} - ${currentJob.photos.length} foto`,
-              sound: true,
-              priority: AndroidNotificationPriority.HIGH,
-            },
-            trigger: null,
-          });
+          // await scheduleNotificationAsync({
+          //   content: {
+          //     title: 'Gagal mengunggah foto',
+          //     body: `Tiket ${currentJob.ticket_id} - ${currentJob.photos.length} foto`,
+          //     sound: true,
+          //     priority: AndroidNotificationPriority.HIGH,
+          //   },
+          //   trigger: null,
+          // });
         }
       }
     } catch (error) {
@@ -209,6 +241,11 @@ const uploadWorker = async (taskData: any) => {
 };
 
 export const startUploadService = async () => {
+  if (BackgroundJob.isRunning()) {
+    handleLog("Background job is already running.");
+    return;
+  }
+
   const options = {
     taskName: 'PhotoUploader',
     taskTitle: 'Mengunggah foto pekerjaan',
@@ -222,11 +259,19 @@ export const startUploadService = async () => {
       delay: 1000
     },
   };
-  await BackgroundJob.start(uploadWorker, options);
-  handleLog(`Background service status: ${BackgroundJob.isRunning()}`);
+  try {
+    await BackgroundJob.start(uploadWorker, options);
+    handleLog(`Background service status: ${BackgroundJob.isRunning()}`);
+  } catch (error) {
+    handleError(`Failed to start background job: ${error}`);
+  }
 };
 
 export const stopUploadService = async () => {
-  handleLog('Menghentikan background service...');
-  await BackgroundJob.stop();
+  try {
+    handleLog('Menghentikan background service...');
+    await BackgroundJob.stop();
+  } catch (error) {
+    handleError(`Failed to stop background job: ${error}`);
+  }
 };

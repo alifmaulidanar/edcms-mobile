@@ -2,7 +2,7 @@ import supabase from '../utils/supabase';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const logFilePath = FileSystem.documentDirectory + 'pastims_logs.txt';
+const logFilePath = FileSystem.documentDirectory + `${process.env.EXPO_PUBLIC_LINKING_URI}_logs.txt`;
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB in bytes
 const MAX_LOG_AGE = 3 * 30 * 24 * 60 * 60 * 1000; // 3 months in milliseconds
 

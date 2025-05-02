@@ -14,7 +14,7 @@ export const login = async (email: string, password: string) => {
       handleError(`Error setting session: ${sessionError.message}`);
     }
   }
-  await AsyncStorage.setItem('session', JSON.stringify(data.session.access_token));
+  // await AsyncStorage.setItem('session', JSON.stringify(data.session.access_token));
   const userId = data.user?.id;
   if (!userId) {
     handleError('User ID not found');

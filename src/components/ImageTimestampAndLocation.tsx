@@ -7,7 +7,6 @@ import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType 
 // Base64
 const loadImageAsBase64 = async (uri: string) => {
   try {
-    // handleLog(`Membaca file gambar sebagai Base64: ${uri}`);
     const base64Data = await readAsStringAsync(uri, { encoding: EncodingType.Base64 });
     if (!base64Data) {
       handleError('Base64 kosong atau tidak valid.');
@@ -40,7 +39,6 @@ export const getUserLocationInfo = async (location: any) => {
     }
     const data = await response.json();
     const address = data.address;
-    // handleLog(`Informasi lokasi: ${address}`);
     if (!address) {
       handleError('Alamat tidak ditemukan dalam hasil data');
       return null;
@@ -65,7 +63,6 @@ export const getUserLocationInfo = async (location: any) => {
 const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5000) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // handleLog(`Mencoba mendapatkan lokasi pengguna... (Percobaan ${attempt})`);
       const userInfo = await getUserLocationInfo(location);
       if (userInfo) return userInfo;
     } catch (error) {
@@ -85,6 +82,21 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
     if (!userInfo) {
       handleError('Tidak bisa mendapatkan lokasi, menunda proses.');
       return null;
+    }
+
+    if (!photoUri || typeof photoUri !== 'string') {
+      handleError('Invalid photo URI');
+      throw new Error('Invalid photo URI');
+    }
+
+    if (!fileName || typeof fileName !== 'string') {
+      handleError('Invalid file name');
+      throw new Error('Invalid file name');
+    }
+
+    if (!timestamp) {
+      handleError('Invalid timestamp');
+      throw new Error('Invalid timestamp');
     }
 
     const timestampText = [
@@ -112,47 +124,61 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
     if (!surface) return photoUri;
     const canvas = surface.getCanvas();
 
-    // 3. Load Image
-    const base64Data = photoUri.startsWith('file://') ? await loadImageAsBase64(photoUri) : photoUri.split('base64,')[1];
-    if (!base64Data) return photoUri;
-    const skData = Skia.Data.fromBase64(base64Data);
-    const img = Skia.Image.MakeImageFromEncoded(skData);
-    if (!img) return photoUri;
+    try {
+      // 3. Load Image
+      const base64Data = photoUri.startsWith('file://') ? await loadImageAsBase64(photoUri) : photoUri.split('base64,')[1];
+      if (!base64Data) return photoUri;
+      const skData = Skia.Data.fromBase64(base64Data);
+      const img = Skia.Image.MakeImageFromEncoded(skData);
+      if (!img) return photoUri;
 
-    // 4. Canvas Draw Image
-    canvas.drawImage(img, 0, 0);
+      // 4. Canvas Draw Image
+      canvas.drawImage(img, 0, 0);
 
-    // 5. Text Paint & Font
-    const margin = imgWidth * 0.02; // 2% from image width
-    const fontSize = imgWidth * 0.04; // 4% from image width
-    const lineHeight = fontSize * 1.2;
-    const fontMgr = Skia.FontMgr.System();
-    const typeface = fontMgr.matchFamilyStyle('Helvetica', FontStyle.Bold);
-    const font = Skia.Font(typeface, fontSize);
-    const paint = Skia.Paint();
-    paint.setColor(Skia.Color('white'));
-    paint.setStyle(PaintStyle.Fill);
-    paint.setStrokeWidth(1);
+      // 5. Text Paint & Font
+      const margin = imgWidth * 0.02; // 2% from image width
+      const fontSize = imgWidth * 0.04; // 4% from image width
+      const lineHeight = fontSize * 1.2;
+      const fontMgr = Skia.FontMgr.System();
+      const typeface = fontMgr.matchFamilyStyle('Helvetica', FontStyle.Bold);
+      const font = Skia.Font(typeface, fontSize);
+      const paint = Skia.Paint();
+      paint.setColor(Skia.Color('white'));
+      paint.setStyle(PaintStyle.Fill);
+      paint.setStrokeWidth(1);
 
-    // 6. Text Position
-    let yPos = imgHeight - margin;
-    const textX = imgWidth - margin;
+      // 6. Text Position
+      let yPos = imgHeight - margin;
+      const textX = imgWidth - margin;
 
-    // 7. Draw Text
-    timestampText.reverse().forEach(line => {
-      const textWidth = font.measureText(line).width;
-      const x = textX - textWidth;
-      canvas.drawText(line, x, yPos, paint, font);
-      yPos -= lineHeight;
-    });
+      // 7. Draw Text
+      timestampText.reverse().forEach(line => {
+        const textWidth = font.measureText(line).width;
+        const x = textX - textWidth;
+        canvas.drawText(line, x, yPos, paint, font);
+        yPos -= lineHeight;
+      });
 
-    // 8. Save
-    const snapshot = surface.makeImageSnapshot();
-    if (!snapshot) return photoUri;
-    const newImageBase64 = snapshot.encodeToBase64();
-    const fileUri = `${documentDirectory}${fileName}`;
-    await writeAsStringAsync(fileUri, newImageBase64, { encoding: EncodingType.Base64 });
-    return fileUri;
+      // 8. Save
+      const snapshot = surface.makeImageSnapshot();
+      if (!snapshot) return photoUri;
+      const newImageBase64 = snapshot.encodeToBase64();
+      const fileUri = `${documentDirectory}${fileName}`;
+      await writeAsStringAsync(fileUri, newImageBase64, { encoding: EncodingType.Base64 });
+
+      // 9. Cleanup resources
+      if (snapshot) snapshot.dispose();
+      if (img) img.dispose();
+      if (skData) skData.dispose();
+      if (surface) surface.dispose();
+      paint.dispose();
+      font.dispose();
+      return fileUri;
+    } catch (error) {
+      handleError(`Error during image processing: ${error}`);
+      if (surface) surface.dispose();
+      return photoUri;
+    }
   } catch (error) {
     handleError(`Error adding timestamp: ${error}`);
     return photoUri;
