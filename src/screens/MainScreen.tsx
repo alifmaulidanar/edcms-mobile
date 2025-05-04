@@ -701,26 +701,35 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       {/* Tickets Dropdown */}
       <View className="mt-4">
         <Text className="mb-2 text-lg font-bold">Pilih Tiket yang Tersedia</Text>
-        <Picker
-          mode="dialog"
-          selectedValue={selectedTicket?.id || null}
-          onValueChange={(value: any) => {
-            const ticket = tickets.find((t) => t.id === value);
-            setSelectedTicket(ticket || null);
-            setCurrentTicketID(ticket?.ticket_id || null);
-          }}
-          style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
-        >
-          <Picker.Item label="Pilih tiket..." value={null} />
-          {tickets
-            .filter((ticket) => ticket.status === 'assigned')
-            .map((ticket) => {
-              const geofenceDescription = geofence.find((g) => g.external_id === ticket.geofence_id)?.description || ticket.description;
-              return (
-                <Picker.Item style={{ fontSize: 12 }} key={ticket.id} label={`${geofenceDescription} - ${ticket.additional_info?.tipe_tiket || ticket.description} - MID: ${ticket.additional_info?.mid || ''} - TID: ${ticket.additional_info?.tid || ''}`} value={ticket.id} />
-              );
-            })}
-        </Picker>
+        <View style={{ maxHeight: 100, overflow: 'hidden' }}>
+          <ScrollView>
+            <Picker
+              mode="dialog"
+              selectedValue={selectedTicket?.id || null}
+              onValueChange={(value: any) => {
+                const ticket = tickets.find((t) => t.id === value);
+                setSelectedTicket(ticket || null);
+                setCurrentTicketID(ticket?.ticket_id || null);
+              }}
+              style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+            >
+              <Picker.Item label="Pilih tiket..." value={null} />
+              {tickets
+                .filter((ticket) => ticket.status === 'assigned')
+                .map((ticket) => {
+                  const geofenceDescription = geofence.find((g) => g.external_id === ticket.geofence_id)?.description || ticket.description;
+                  return (
+                    <Picker.Item
+                      style={{ fontSize: 12 }}
+                      key={ticket.id}
+                      label={`${geofenceDescription} - ${ticket.additional_info?.tipe_tiket || ""} - MID: ${ticket.additional_info?.mid || ''} - TID: ${ticket.additional_info?.tid || ''}`}
+                      value={ticket.id}
+                    />
+                  );
+                })}
+            </Picker>
+          </ScrollView>
+        </View>
       </View>
 
       {/* Photo Modal */}
