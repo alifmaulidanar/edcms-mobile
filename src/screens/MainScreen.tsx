@@ -203,34 +203,81 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     try {
       if (selectedTicket?.ticket_id) {
         await stopBackgroundTracking(selectedTicket.ticket_id); // Stop Radar location tracking
+
+        // Set uploading state before starting service
+        setIsUploading(true);
+        handleLog('Starting background upload service...');
+
         try {
           await startUploadService(); // Start background photo upload
+
+          // Give a small delay to ensure the service has started properly
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          if (!BackgroundJob.isRunning()) {
+            handleError('Background service failed to start properly');
+            Alert.alert(
+              "Perhatian",
+              "Layanan upload sedang diproses di latar belakang. Anda dapat melanjutkan menggunakan aplikasi.",
+              [{ text: "OK" }]
+            );
+          }
+
+          // Clear storage and reset states
+          await AsyncStorage.removeItem("startTime");
+          setPhotoModalVisible(false);
+          setTracking(false);
+          setPhotos([]);
+          setTime(0);
+          setCurrentLocation(null);
+          setUploadProgress(0);
+
+          // Show feedback to user
+          Alert.alert(
+            "Proses Upload",
+            "Foto sedang diunggah di latar belakang. Anda akan menerima notifikasi setelah proses selesai.",
+            [
+              {
+                text: "OK",
+                onPress: () => {
+                  setIsUploading(false);
+                  setIsCompleting(false);
+
+                  // Check if ticket extras should be shown
+                  if (ticketExtrasFlag === "true") {
+                    setTicketExtrasModalVisible(true);
+                  } else if (ticketExtrasFlag === "false") {
+                    AsyncStorage.removeItem("selectedTicket");
+                    setSelectedTicket(null);
+                    handleLog('Trip stopped');
+                    onRefresh();
+                  }
+                }
+              }
+            ]
+          );
         } catch (error) {
           handleError(`Failed to start upload service: ${error}`);
-          // Continue even if service failed to start
-        }
-        await AsyncStorage.removeItem("startTime");
-        setTracking(false); // Reset state
-        setPhotos([]);
-        setTime(0);
-        setCurrentLocation(null);
-        setUploadProgress(0);
-        Alert.alert("Sukses", "Foto berhasil diunggah.");
-        setIsUploading(false);
-        setIsCompleting(false);
-        setPhotoModalVisible(false);
-        if (ticketExtrasFlag === "true") {
-          setTicketExtrasModalVisible(true);
-        }
-        if (ticketExtrasFlag === "false") {
-          await AsyncStorage.removeItem("selectedTicket");
-          setSelectedTicket(null);
-          handleLog('Trip stopped');
-          onRefresh();
+          Alert.alert(
+            "Terjadi Kesalahan",
+            "Gagal memulai layanan upload. Silakan coba lagi.",
+            [
+              {
+                text: "OK",
+                onPress: () => {
+                  setIsUploading(false);
+                  setIsCompleting(false);
+                }
+              }
+            ]
+          );
         }
       }
     } catch (error) {
       handleError(`Error stopping trip: ${error}`);
+      setIsUploading(false);
+      setIsCompleting(false);
+      Alert.alert("Kesalahan", "Terjadi kesalahan saat menyelesaikan pekerjaan. Silakan coba lagi.");
     }
   };
 
@@ -360,35 +407,42 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // Handle picking photo
   const handleTakePhoto = async () => {
     setIsPhotoProcessed(true);
-    const result = await launchCameraAsync({
-      mediaTypes: MediaTypeOptions.Images,
-      quality: 0.5,
-    });
-    if (!result.canceled && result.assets.length > 0) {
-      const photoUri = result.assets[0].uri;
-      const index = photos.length;
-      const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
-      if (processedUri) {
-        if (photos.length >= requiredPhotoCount) {
-          Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
-          return;
-        }
-        if (photos.length < requiredPhotoCount) {
-          const newPhotos = [...photos, processedUri];
-          setPhotos(newPhotos);
-          setIsPhotoProcessed(false);
-          if (newPhotos.length === requiredPhotoCount) {
-            if (selectedTicket?.ticket_id && userData?.user_id) {
-              await addToQueue(newPhotos, selectedTicket.ticket_id, userData.user_id);
+    try {
+      const result = await launchCameraAsync({
+        mediaTypes: MediaTypeOptions.Images,
+        quality: 0.5,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        const photoUri = result.assets[0].uri;
+        const index = photos.length;
+        const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
+        if (processedUri) {
+          if (photos.length >= requiredPhotoCount) {
+            Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
+            return;
+          }
+          if (photos.length < requiredPhotoCount) {
+            const newPhotos = [...photos, processedUri];
+            setPhotos(newPhotos);
+            setIsPhotoProcessed(false);
+            if (newPhotos.length === requiredPhotoCount) {
+              if (selectedTicket?.ticket_id && userData?.user_id) {
+                await addToQueue(newPhotos, selectedTicket.ticket_id, userData.user_id);
+              }
             }
+          } else {
+            Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
           }
         } else {
-          Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
+          handleError("Failed to process photo");
+          Alert.alert("Gagal memproses foto", "Silakan coba lagi.");
         }
-      } else {
-        handleError("Failed to process photo");
-        Alert.alert("Gagal memproses foto", "Silakan coba lagi.");
       }
+    } catch (error) {
+      handleError(`Error taking photo: ${error}`);
+      Alert.alert("Waktu habis", "Pengambilan foto memakan waktu terlalu lama. Silakan coba lagi.");
+    } finally {
+      setIsPhotoProcessed(false);
     }
   };
 
@@ -606,6 +660,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Cleanup function untuk modal
+  const handleClosePhotoModal = () => {
+    if (isUploading) {
+      Alert.alert("Perhatian", "Upload sedang berlangsung. Tunggu hingga selesai.");
+      return;
+    }
+    setPhotoModalVisible(false);
+    setIsUploading(false);
+    setIsCompleting(false);
+    setUploadProgress(0);
+    setUploadMessage("");
+  };
+
   return (
     <ScrollView
       className='bg-[#f5f5f5] p-6 mt-4'
@@ -661,11 +728,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         visible={photoModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => {
-          if (!isUploading && photoModalVisible) {
-            setPhotoModalVisible(false);
-          }
-        }}
+        onRequestClose={handleClosePhotoModal}
+      // onRequestClose={() => {
+      //   if (!isUploading && photoModalVisible) {
+      //     setPhotoModalVisible(false);
+      //   }
+      // }}
       >
         <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
           <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
@@ -1147,24 +1215,22 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     <Text className="text-sm text-gray-600">Signal Bar</Text>
                     <TextInput
                       // value={formData.signal_bar}
-                      value={selectedTicket?.additional_info?.signal_bar}
+                      value={formData.signal_bar || selectedTicket?.additional_info?.signal_bar}
                       onChangeText={(text) => handleInputChangeTicketExtras("signal_bar", text)}
                       // placeholder="TID MTI"
                       // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
-                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Signal Type</Text>
                     <TextInput
                       // value={formData.signal_type}
-                      value={selectedTicket?.additional_info?.signal_type}
+                      value={formData.signal_type || selectedTicket?.additional_info?.signal_type}
                       onChangeText={(text) => handleInputChangeTicketExtras("signal_type", text)}
                       // placeholder="Signal Type"
                       // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
-                      editable={false}
                     />
                   </View>
                 </View>
@@ -1258,12 +1324,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     <Text className="text-sm text-gray-600">Prioritas EDC</Text>
                     <TextInput
                       // value={formData.edc_priority}
-                      value={selectedTicket?.additional_info?.priority_edc}
+                      value={formData.edc_priority || selectedTicket?.additional_info?.priority_edc}
                       onChangeText={(text) => handleInputChangeTicketExtras("edc_priority", text)}
                       // placeholder="Prioritas EDC"
                       // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
-                      editable={false}
                     />
                   </View>
                 </View>

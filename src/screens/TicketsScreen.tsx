@@ -112,7 +112,7 @@ const TicketsScreen = () => {
 
   const TicketsList = ({ tickets, geofence, onRefresh, isRefreshing, handleTicketPress }: any) => {
     const [searchText, setSearchText] = useState(""); // Search state
-    const [sortKey, setSortKey] = useState("created_at"); // Sort state
+    const [sortKey, setSortKey] = useState("updated_at"); // Sort state
     const [sortOrder, setSortOrder] = useState("desc"); // Sort order state
     const [filterKey, setFilterKey] = useState(""); // Filter state
 
@@ -248,6 +248,20 @@ const TicketsScreen = () => {
                     return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
                   })()}
                 </Text>
+                {index === 2 && completedTickets && (
+                  <Text style={{ color: "gray" }}>
+                    Selesai: {(() => {
+                      const createdAt = new Date(ticket.updated_at);
+                      const day = String(createdAt.getDate()).padStart(2, "0");
+                      const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                      const year = createdAt.getFullYear();
+                      const hours = String(createdAt.getHours()).padStart(2, "0");
+                      const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                      const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                      return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                    })()}
+                  </Text>
+                )}
               </View>
             </TouchableOpacity>
           ))}
