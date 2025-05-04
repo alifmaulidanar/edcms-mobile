@@ -3,7 +3,6 @@ import { RootState } from '../store';
 import { useSelector } from 'react-redux';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getAllGeofences } from '../api/geofences';
 import { Picker } from '@react-native-picker/picker';
 import NetInfo from '@react-native-community/netinfo';
 import { Geofence, QueueItem, Ticket } from '../types';
@@ -11,12 +10,13 @@ import { getCurrentPositionAsync } from 'expo-location';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
 import { requestPermissionsAsync } from 'expo-media-library';
-import React, { useState, useEffect, useCallback } from "react";
 import { getTickets, updateTicketExtras } from '../api/tickets';
 import { startUploadService } from "../utils/backgroundUploader";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getAllGeofences, getGeofencesByIds } from '../api/geofences';
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
@@ -120,20 +120,37 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [userData]);
 
+  // Fetch geofences with optimized approach
   const fetchGeofences = useCallback(async () => {
     try {
+      const ticketsWithGeofenceIds = tickets
+        .filter(ticket => ticket.status === 'assigned')
+        .map(ticket => ticket.geofence_id);
+      if (ticketsWithGeofenceIds.length > 0) {
+        const geofencesByIds = await getGeofencesByIds(ticketsWithGeofenceIds);
+        if (geofencesByIds && geofencesByIds.length > 0) {
+          setGeofence(geofencesByIds);
+          return;
+        }
+      }
       const response = await getAllGeofences();
       setGeofence(response);
     } catch (error: any) {
       handleError(`Error fetching geofences: ${error.message}`);
     }
-  }, []);
+  }, [tickets]);
 
   // Fetch tickets and geofences
   useEffect(() => {
     fetchTickets();
-    fetchGeofences();
   }, [fetchTickets]);
+
+  // Update geofences whenever tickets change
+  useEffect(() => {
+    if (tickets.length > 0) {
+      fetchGeofences();
+    }
+  }, [tickets, fetchGeofences]);
 
   // Handle pull-to-refresh
   const onRefresh = async () => {
@@ -673,6 +690,14 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     setUploadMessage("");
   };
 
+  const geofenceLookup = useMemo(() => {
+    const lookup: { [key: string]: Geofence } = {};
+    geofence.forEach((g) => {
+      lookup[g.external_id] = g;
+    });
+    return lookup;
+  }, [geofence]);
+
   return (
     <ScrollView
       className='bg-[#f5f5f5] p-6 mt-4'
@@ -717,12 +742,17 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               {tickets
                 .filter((ticket) => ticket.status === 'assigned')
                 .map((ticket) => {
-                  const geofenceDescription = geofence.find((g) => g.external_id === ticket.geofence_id)?.description || ticket.description;
+                  const geofence_obj = geofenceLookup[ticket.geofence_id];
+                  const geofenceDescription = geofence_obj?.description || ticket.description;
+                  // Truncate description to max 20 characters plus ellipsis
+                  const truncatedDescription = geofenceDescription.length > 20
+                    ? geofenceDescription.substring(0, 25) + '...'
+                    : geofenceDescription;
                   return (
                     <Picker.Item
                       style={{ fontSize: 12 }}
                       key={ticket.id}
-                      label={`${geofenceDescription} - ${ticket.additional_info?.tipe_tiket || ""} - MID: ${ticket.additional_info?.mid || ''} - TID: ${ticket.additional_info?.tid || ''}`}
+                      label={`${truncatedDescription} - ${ticket.additional_info?.tipe_tiket || ""} - TID: ${ticket.additional_info?.tid || ''}`}
                       value={ticket.id}
                     />
                   );
@@ -1546,19 +1576,22 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             {!tracking && selectedTicket && (
               <View className="gap-y-2">
                 <Text className="text-center text-gray-600">
+                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket.ticket_id}
+                </Text>
+                <Text className="text-center text-gray-600">
                   <Text className="font-bold">Deskripsi:</Text> {selectedTicket.description}
                 </Text>
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">Lokasi Tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.description}
+                  <Text className="font-bold">Lokasi Tujuan:</Text> {geofenceLookup[selectedTicket.geofence_id]?.description}
                 </Text>
                 {selectedTicket?.additional_info && (
                   <>
                     <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
                       <Text className="text-center text-gray-600">
-                        <Text className="font-bold">MID:</Text> {selectedTicket.additional_info?.mid || '-'}
+                        <Text className="font-bold">TID:</Text> {selectedTicket.additional_info?.tid || '-'}
                       </Text>
                       <Text className="text-center text-gray-600">
-                        <Text className="font-bold">TID:</Text> {selectedTicket.additional_info?.tid || '-'}
+                        <Text className="font-bold">MID:</Text> {selectedTicket.additional_info?.mid || '-'}
                       </Text>
                     </View>
                     <Text className="text-center text-gray-600">
@@ -1722,7 +1755,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description}
                 </Text>
                 <Text className="text-sm text-gray-600">
-                  <Text className="font-bold">Tempat tujuan:</Text> {geofence.find((g) => g.external_id === selectedTicket?.geofence_id)?.description}
+                  <Text className="font-bold">Tempat tujuan:</Text> {geofenceLookup[selectedTicket?.geofence_id ?? ""]?.description || "Tidak tersedia"}
                 </Text>
               </View>
               <View className="flex-row justify-between mt-4">

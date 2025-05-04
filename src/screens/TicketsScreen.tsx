@@ -3,12 +3,12 @@ import { useSelector } from "react-redux";
 import { Geofence, Ticket } from "../types";
 import { setStringAsync } from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import { getAllGeofences } from "../api/geofences";
 import { Picker } from "@react-native-picker/picker";
 import { error as handleError } from '../utils/logHandler';
 import { getSingleTicket, getTickets } from "../api/tickets";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { downloadAsync, documentDirectory } from 'expo-file-system';
+import { getAllGeofences, getGeofencesByIds } from '../api/geofences';
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
 import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert, TextInput } from "react-native";
@@ -37,6 +37,7 @@ const openInGoogleMaps = (coordinates: [number, number]) => {
 const TicketsScreen = () => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [geofence, setGeofence] = useState<Geofence[]>([]);
+  const [geofenceLookup, setGeofenceLookup] = useState<Record<string, Geofence>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const userData = useSelector((state: RootState) => state.user);
@@ -63,21 +64,53 @@ const TicketsScreen = () => {
     }
   }, [userData]);
 
-  // Fetch geofences
+  // Fetch geofences with optimized approach
   const fetchGeofences = useCallback(async () => {
     try {
+      if (tickets.length > 0) {
+        const uniqueGeofenceIds = [...new Set(tickets.map(ticket => ticket.geofence_id))];
+        if (uniqueGeofenceIds.length > 0) {
+          const geofencesByIds = await getGeofencesByIds(uniqueGeofenceIds);
+          if (geofencesByIds && geofencesByIds.length > 0) {
+            setGeofence(geofencesByIds);
+            const lookup: Record<string, Geofence> = {};
+            geofencesByIds.forEach(g => {
+              if (g.external_id) {
+                lookup[g.external_id] = g;
+              }
+            });
+            setGeofenceLookup(lookup);
+            return;
+          }
+        }
+      }
+
+      // Fallback to getAllGeofences if there are no specific IDs to fetch or if fetching by IDs failed
       const response = await getAllGeofences();
       setGeofence(response);
+      const lookup: Record<string, Geofence> = {};
+      response.forEach(g => {
+        if (g.external_id) {
+          lookup[g.external_id] = g;
+        }
+      });
+      setGeofenceLookup(lookup);
     } catch (error: any) {
       handleError(`Error fetching geofences: ${error.message}`);
     }
-  }, []);
+  }, [tickets]);
 
-  // Fetch tickets and geofences
+  // Fetch tickets
   useEffect(() => {
     fetchTickets();
-    fetchGeofences();
-  }, [fetchTickets, fetchGeofences]);
+  }, [fetchTickets]);
+
+  // Update geofences whenever tickets change
+  useEffect(() => {
+    if (tickets.length > 0) {
+      fetchGeofences();
+    }
+  }, [tickets, fetchGeofences]);
 
   // Handle pull-to-refresh
   const onRefresh = async () => {
@@ -123,13 +156,13 @@ const TicketsScreen = () => {
       // Filter by search text
       if (searchText) {
         filtered = filtered.filter(
-          (ticket: any) =>
-            ticket.description.toLowerCase().includes(searchText.toLowerCase()) ||
-            geofence
-              .find((g: any) => g.external_id === ticket.geofence_id)
-              ?.description.toLowerCase()
-              .includes(searchText.toLowerCase()) ||
-            ticket.ticket_id.toLowerCase().includes(searchText.toLowerCase())
+          (ticket: any) => {
+            const ticketMatches = ticket.description.toLowerCase().includes(searchText.toLowerCase()) ||
+              ticket.ticket_id.toLowerCase().includes(searchText.toLowerCase());
+            const geofenceDesc = geofenceLookup[ticket.geofence_id]?.description || '';
+            const geofenceMatches = geofenceDesc.toLowerCase().includes(searchText.toLowerCase());
+            return ticketMatches || geofenceMatches;
+          }
         );
       }
 
@@ -142,15 +175,13 @@ const TicketsScreen = () => {
       const sorted = [...filtered].sort((a: any, b: any) => {
         const valueA = a[sortKey];
         const valueB = b[sortKey];
-
         if (sortOrder === "desc") {
           return valueA < valueB ? 1 : -1;
         }
         return valueA > valueB ? 1 : -1;
       });
-
       return sorted;
-    }, [tickets, searchText, sortKey, sortOrder, filterKey, geofence]);
+    }, [tickets, searchText, sortKey, sortOrder, filterKey]);
 
     return (
       <View>
@@ -204,54 +235,41 @@ const TicketsScreen = () => {
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
         >
-          {filteredAndSortedTickets.map((ticket: any) => (
-            <TouchableOpacity
-              key={ticket.ticket_id}
-              style={{
-                backgroundColor: "white",
-                padding: 16,
-                marginTop: 6,
-                marginBottom: 6,
-                marginRight: 8,
-                marginLeft: 8,
-                borderRadius: 8,
-                borderLeftWidth: 4,
-                borderColor:
-                  ticket.status === "assigned"
-                    ? "blue"
-                    : ticket.status === "on_progress"
-                      ? "yellow"
-                      : ticket.status === "completed"
-                        ? "green"
-                        : "red",
-              }}
-              onPress={() => handleTicketPress(ticket)}
-            >
-              <View>
-                <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
-                <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
-                <Text>
-                  {
-                    geofence.find((g: any) => g.external_id === ticket.geofence_id)
-                      ?.description
-                  }
-                </Text>
-                <Text style={{ color: "gray" }}>
-                  Dibuat: {(() => {
-                    const createdAt = new Date(ticket.created_at);
-                    const day = String(createdAt.getDate()).padStart(2, "0");
-                    const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-                    const year = createdAt.getFullYear();
-                    const hours = String(createdAt.getHours()).padStart(2, "0");
-                    const minutes = String(createdAt.getMinutes()).padStart(2, "0");
-                    const seconds = String(createdAt.getSeconds()).padStart(2, "0");
-                    return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
-                  })()}
-                </Text>
-                {index === 2 && completedTickets && (
+          {filteredAndSortedTickets.map((ticket: any) => {
+            const geofenceItem = geofenceLookup[ticket.geofence_id];
+            const geofenceDescription = geofenceItem?.description || 'Loading location...';
+            return (
+              <TouchableOpacity
+                key={ticket.ticket_id}
+                style={{
+                  backgroundColor: "white",
+                  padding: 16,
+                  marginTop: 6,
+                  marginBottom: 6,
+                  marginRight: 8,
+                  marginLeft: 8,
+                  borderRadius: 8,
+                  borderLeftWidth: 4,
+                  borderColor:
+                    ticket.status === "assigned"
+                      ? "blue"
+                      : ticket.status === "on_progress"
+                        ? "yellow"
+                        : ticket.status === "completed"
+                          ? "green"
+                          : "red",
+                }}
+                onPress={() => handleTicketPress(ticket)}
+              >
+                <View>
+                  <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
+                  <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
+                  <Text style={{ fontWeight: "500", color: "#4B5563" }}>
+                    {geofenceDescription}
+                  </Text>
                   <Text style={{ color: "gray" }}>
-                    Selesai: {(() => {
-                      const createdAt = new Date(ticket.updated_at);
+                    Dibuat: {(() => {
+                      const createdAt = new Date(ticket.created_at);
                       const day = String(createdAt.getDate()).padStart(2, "0");
                       const month = String(createdAt.getMonth() + 1).padStart(2, "0");
                       const year = createdAt.getFullYear();
@@ -261,10 +279,24 @@ const TicketsScreen = () => {
                       return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
                     })()}
                   </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          ))}
+                  {index === 2 && completedTickets && (
+                    <Text style={{ color: "gray" }}>
+                      Selesai: {(() => {
+                        const createdAt = new Date(ticket.updated_at);
+                        const day = String(createdAt.getDate()).padStart(2, "0");
+                        const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                        const year = createdAt.getFullYear();
+                        const hours = String(createdAt.getHours()).padStart(2, "0");
+                        const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                        const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                        return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                      })()}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
 
           {filteredAndSortedTickets.length === 0 && (
             <Text style={{ textAlign: "center", color: "gray", marginTop: 16 }}>
@@ -380,7 +412,6 @@ const TicketsScreen = () => {
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
                       {selectedTicket.ticket_id}
-                      {/* {`${selectedTicket.ticket_id.slice(0, 8)}...${selectedTicket.ticket_id.slice(-8)}`} */}
                     </Text>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(`ID Tiket: ${selectedTicket.ticket_id}`)}
@@ -396,10 +427,9 @@ const TicketsScreen = () => {
                   <View className="flex-row items-center">
                     <Text className="mr-2 text-gray-800">
                       {selectedTicket.geofence_id}
-                      {/* {`${selectedTicket.geofence_id.slice(0, 8)}...${selectedTicket.geofence_id.slice(-8)}`} */}
                     </Text>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(`ID Tempat (${geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.description}): ${selectedTicket.geofence_id}`)}
+                      onPress={() => copyToClipboard(`ID Tempat (${geofenceLookup[selectedTicket.geofence_id]?.description || ''}): ${selectedTicket.geofence_id}`)}
                     >
                       <Ionicons name="copy-outline" size={16} color="#4F46E5" />
                     </TouchableOpacity>
@@ -411,7 +441,9 @@ const TicketsScreen = () => {
                   <Text className="font-medium text-gray-500">Tempat:</Text>
                   <View className="flex-row items-center">
                     <Text className="text-gray-800">
-                      {geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.description}
+                      {geofenceLookup[selectedTicket.geofence_id]?.description?.length > 30
+                        ? `${geofenceLookup[selectedTicket.geofence_id]?.description.slice(0, 30)}...`
+                        : geofenceLookup[selectedTicket.geofence_id]?.description || 'Tempat tidak ditemukan'}
                     </Text>
                   </View>
                 </View>
@@ -419,13 +451,10 @@ const TicketsScreen = () => {
                 {/* Open in Google Maps */}
                 <TouchableOpacity
                   className="items-center p-2 mb-2 border border-blue-500 rounded-lg"
-                  onPress={() =>
-                    openInGoogleMaps(
-                      geofence.find(
-                        (g) => g.external_id === selectedTicket.geofence_id
-                      )?.coordinates || [0, 0]
-                    )
-                  }
+                  onPress={() => {
+                    const coordinates = geofenceLookup[selectedTicket.geofence_id]?.coordinates || [0, 0];
+                    openInGoogleMaps(coordinates);
+                  }}
                 >
                   <View className="flex-row items-center gap-x-2">
                     <Text className="font-medium text-blue-500">
