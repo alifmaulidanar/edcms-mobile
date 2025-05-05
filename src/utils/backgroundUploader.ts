@@ -51,6 +51,7 @@ const getSanitizedQueue = async () => {
   }
 };
 
+// Optimized photo processing to avoid memory issues
 const processPhoto = async (photoUri: string, ticketId: string, timestamp: string, location: any, index: number) => {
   try {
     if (!photoUri || typeof photoUri !== 'string') {
@@ -68,11 +69,11 @@ const processPhoto = async (photoUri: string, ticketId: string, timestamp: strin
       throw new Error('Invalid timestamp');
     }
 
-    // Compression dan resize 
+    // Compression dan resize - reduced quality to improve performance
     const compressed = await manipulateAsync(
       photoUri,
       [{ resize: { width: 800 } }],
-      { compress: 0.4, format: SaveFormat.JPEG }
+      { compress: 0.3, format: SaveFormat.JPEG }
     );
 
     // Timestamp and location
@@ -93,20 +94,20 @@ const processPhoto = async (photoUri: string, ticketId: string, timestamp: strin
       handleError(`Failed to save photo to library: ${err}`);
     });
 
-    // Delete original photo
+    // Delete original photo to free up memory
     await deleteAsync(photoUri, { idempotent: true }).catch((err) => {
       handleError(`Failed to delete original photo: ${err}`);
     });
     return compressed.uri;
   } catch (error: any) {
     handleError(`Gagal memproses foto: ${error}`);
-    throw error;
+    return null; // Return null instead of throwing to continue with other photos
   }
 };
 
+// Fixed background worker to be more resilient
 const uploadWorker = async (taskData: any) => {
   let emptyQueueRetry = 0;
-
   try {
     // Show initial notification that the service has started
     await scheduleNotificationAsync({
@@ -128,6 +129,7 @@ const uploadWorker = async (taskData: any) => {
 
     let errorCount = 0;
     const MAX_ERRORS = 5;
+    await AsyncStorage.setItem('uploadInProgress', 'true');
     while (true) {
       try {
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -140,8 +142,7 @@ const uploadWorker = async (taskData: any) => {
               progressBar: { max: 100, value: 100 }
             });
             handleLog("No pending uploads. Stopping background job.");
-
-            // Show notification that upload is complete
+            await AsyncStorage.setItem('uploadInProgress', 'false');
             await scheduleNotificationAsync({
               content: {
                 title: 'Upload selesai',
@@ -151,11 +152,10 @@ const uploadWorker = async (taskData: any) => {
               },
               trigger: null,
             });
-
             await stopUploadService();
             break;
           }
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
         }
 
@@ -178,7 +178,7 @@ const uploadWorker = async (taskData: any) => {
             trigger: null,
           });
 
-          // Processing photos (compression and resize, timestamp and location, save to library)
+          // Processing photos with proper error handling
           const processedPhotos = [];
           for (let i = 0; i < currentJob.photos.length; i++) {
             const photoUri = currentJob.photos[i];
@@ -218,6 +218,7 @@ const uploadWorker = async (taskData: any) => {
                 indeterminate: false
               }
             });
+            await new Promise(resolve => setTimeout(resolve, 200)); // Add a short delay to prevent overwhelming the system
           }
 
           if (processedPhotos.length === 0) {
@@ -235,53 +236,46 @@ const uploadWorker = async (taskData: any) => {
             } as any);
           });
 
-          const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${currentJob.ticket_id}`, {
-            method: 'POST',
-            headers: {
-              'user_id': currentJob.user_id,
-            },
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          // Delete current job from queue if success
-          if (response.ok) {
-            const newQueue = queue.slice(1);
-            await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
-            await Promise.all(processedPhotos.filter((uri): uri is string => uri !== null).map(uri =>
-              deleteAsync(uri, { idempotent: true }).catch(err => {
-                handleError(`Failed to delete processed photo: ${err}`);
-              })
-            ));
-
-            // Notify success
-            await scheduleNotificationAsync({
-              content: {
-                title: 'Foto berhasil diunggah',
-                body: `Tiket ${currentJob.ticket_id} - ${processedPhotos.length} foto`,
-                sound: true,
-                priority: AndroidNotificationPriority.DEFAULT,
+          try {
+            const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photos/upload/${currentJob.ticket_id}`, {
+              method: 'POST',
+              headers: {
+                'user_id': currentJob.user_id,
               },
-              trigger: null,
+              body: formData,
             });
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // Delete current job from queue if success
+            if (response.ok) {
+              const newQueue = queue.slice(1);
+              await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
+              await Promise.all(processedPhotos.filter((uri): uri is string => uri !== null).map(uri =>
+                deleteAsync(uri, { idempotent: true }).catch(err => {
+                  handleError(`Failed to delete processed photo: ${err}`);
+                })
+              ));
+
+              // Notify success
+              await scheduleNotificationAsync({
+                content: {
+                  title: 'Foto berhasil diunggah',
+                  body: `Tiket ${currentJob.ticket_id} - ${processedPhotos.length} foto`,
+                  sound: true,
+                  priority: AndroidNotificationPriority.DEFAULT,
+                },
+                trigger: null,
+              });
+            }
+          } catch (error) {
+            handleError(`HTTP error: ${error}`);
+            throw error; // Re-throw to handle in the outer catch block
           }
         } catch (error) {
-          handleError(`Gagal memproses tiket: ${error}`);
-
-          // Show notification for error
-          await scheduleNotificationAsync({
-            content: {
-              title: 'Gagal mengunggah foto',
-              body: `Tiket ${currentJob.ticket_id} - akan dicoba kembali nanti`,
-              sound: true,
-              priority: AndroidNotificationPriority.HIGH,
-            },
-            trigger: null,
-          });
-
+          handleError(`Gagal mengunggah foto: ${error}`);
           if ((currentJob.attempts || 0) < MAX_RETRY_ATTEMPTS) {
             const newQueue = [...queue.slice(1), { ...currentJob, attempts: (currentJob.attempts || 0) + 1 }];
             await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
@@ -291,14 +285,12 @@ const uploadWorker = async (taskData: any) => {
             const newFailed = [currentJob, ...failed].slice(0, MAX_FAILED_QUEUE_SIZE);
             await AsyncStorage.setItem('failedQueue', JSON.stringify(newFailed));
             handleLog(`[${new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' })}] Tiket ${currentJob.ticket_id} gagal, attempts: ${currentJob.attempts || 0}`);
-
-            // Final failure notification
             await scheduleNotificationAsync({
               content: {
                 title: 'Gagal mengunggah foto',
                 body: `Tiket ${currentJob.ticket_id} - ${currentJob.photos.length} foto - telah mencapai batas percobaan`,
                 sound: true,
-                priority: AndroidNotificationPriority.HIGH,
+                priority: AndroidNotificationPriority.LOW,
               },
               trigger: null,
             });
@@ -309,6 +301,7 @@ const uploadWorker = async (taskData: any) => {
         errorCount++;
         if (errorCount > MAX_ERRORS) {
           handleError('Too many consecutive errors, stopping background service');
+          await AsyncStorage.setItem('uploadInProgress', 'false');
           break;
         }
         await new Promise(resolve => setTimeout(resolve, 5000));
@@ -316,73 +309,68 @@ const uploadWorker = async (taskData: any) => {
     }
   } catch (error) {
     handleError(`Fatal error in background service: ${error}`);
-
-    // Notify user of fatal error
+    await AsyncStorage.setItem('uploadInProgress', 'false');
     await scheduleNotificationAsync({
       content: {
         title: 'Layanan upload terganggu',
         body: 'Terjadi kesalahan pada layanan upload. Silakan coba lagi nanti.',
         sound: true,
-        priority: AndroidNotificationPriority.HIGH,
+        priority: AndroidNotificationPriority.LOW,
       },
       trigger: null,
     });
   }
 };
 
-export const startUploadService = async () => {
-  // Return early if already running to avoid duplicate services
-  if (BackgroundJob.isRunning()) {
-    handleLog("Background job is already running.");
-    return;
-  }
-
-  const options = {
-    taskName: 'PhotoUploader',
-    taskTitle: 'Mengunggah foto pekerjaan',
-    taskDesc: 'Sedang memproses foto...',
-    taskIcon: {
-      name: 'ic_launcher',
-      type: 'mipmap',
-    },
-    linkingURI: `${process.env.EXPO_PUBLIC_LINKING_URI}://ticket`,
-    parameters: {
-      delay: 1000
-    },
-    progressBar: {
-      max: 100,
-      value: 0,
-      indeterminate: true,
-    },
-    // Required for Android 14 (API level 34)
-    androidConfig: {
-      foregroundServiceType: ['dataSync', 'location'],
-    },
-  };
-
+// Improved start service function
+export const startUploadService = async (): Promise<boolean> => {
   try {
+    if (BackgroundJob.isRunning()) {
+      handleLog("Background job is already running.");
+      return true;
+    }
+    const options = {
+      taskName: 'PhotoUploader',
+      taskTitle: 'Mengunggah foto pekerjaan',
+      taskDesc: 'Sedang memproses foto...',
+      taskIcon: {
+        name: 'ic_launcher',
+        type: 'mipmap',
+      },
+      linkingURI: `${process.env.EXPO_PUBLIC_LINKING_URI}://ticket`,
+      parameters: {
+        delay: 1000
+      },
+      progressBar: {
+        max: 100,
+        value: 0,
+        indeterminate: true,
+      },
+      // Required for Android 14 (API level 34)
+      androidConfig: {
+        foregroundServiceType: ['dataSync', 'location'],
+      },
+    };
     await BackgroundJob.start(uploadWorker, options);
     handleLog(`Background service started. Status: ${BackgroundJob.isRunning()}`);
     return true;
   } catch (error) {
     handleError(`Failed to start background job: ${error}`);
-
-    // Immediately notify user if service fails to start
     await scheduleNotificationAsync({
       content: {
         title: 'Gagal memulai layanan upload',
         body: 'Silakan coba lagi nanti atau restart aplikasi',
         sound: true,
-        priority: AndroidNotificationPriority.HIGH,
+        priority: AndroidNotificationPriority.LOW,
       },
       trigger: null,
     });
-
     return false;
   }
 };
 
-export const stopUploadService = async () => {
+// Improved stop service function
+export const stopUploadService = async (): Promise<boolean> => {
   try {
     if (BackgroundJob.isRunning()) {
       handleLog('Menghentikan background service...');
@@ -395,6 +383,17 @@ export const stopUploadService = async () => {
     }
   } catch (error) {
     handleError(`Failed to stop background job: ${error}`);
+    return false;
+  }
+};
+
+// Check if upload is in progress
+export const isUploadInProgress = async (): Promise<boolean> => {
+  try {
+    const status = await AsyncStorage.getItem('uploadInProgress');
+    return status === 'true';
+  } catch (error) {
+    handleError(`Failed to check upload status: ${error}`);
     return false;
   }
 };

@@ -23,7 +23,7 @@ import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator, TextInput } from "react-native";
 
 const requiredPhotoCount = parseInt(process.env.EXPO_PUBLIC_REQUIRED_PHOTO_COUNT || '8');
-const ticketExtrasFlag = process.env.EXPO_PUBLIC_FEATURE_FLAG_ENABLE_TICKET_EXTRAS;
+// const ticketExtrasFlag = process.env.EXPO_PUBLIC_FEATURE_FLAG_ENABLE_TICKET_EXTRAS;
 
 type RootStackParamList = {
   Login: undefined;
@@ -58,6 +58,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [isPhotoProcessed, setIsPhotoProcessed] = useState(false);
   const [isSubmittingTicketExtras, setIsSubmittingTicketExtras] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  // const [ticketExtrasFlag, setTicketExtrasFlag] = useState<string>("true"); // Default to show ticket extras
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
@@ -215,80 +216,94 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Handle Stop Tracking (Finish Trip)
+  // Handle Stop Tracking (Finish Trip) with better error handling and state management
   const handleStop = async () => {
     try {
-      if (selectedTicket?.ticket_id) {
-        await stopBackgroundTracking(selectedTicket.ticket_id); // Stop Radar location tracking
+      if (!selectedTicket?.ticket_id) {
+        handleError('No ticket ID available for stopping tracking');
+        Alert.alert("Perhatian", "Data tiket masing dimuat. Mohon tunggu beberapa saat dengan tetap membuka aplikasi.");
+        setIsCompleting(false);
+        setIsUploading(false);
+        return;
+      }
+      await stopBackgroundTracking(selectedTicket.ticket_id);
+      setIsUploading(true);
+      const queue = JSON.parse(await AsyncStorage.getItem('uploadQueue') || '[]');
+      if (!queue.length) {
+        handleError('No photos in upload queue');
+        Alert.alert(
+          "Perhatian",
+          "Tidak ada foto untuk diunggah. Silakan ambil foto terlebih dahulu.",
+          [{ text: "OK", onPress: () => setIsUploading(false) }]
+        );
+        return;
+      }
 
-        // Set uploading state before starting service
-        setIsUploading(true);
-        handleLog('Starting background upload service...');
-
-        try {
-          await startUploadService(); // Start background photo upload
-
-          // Give a small delay to ensure the service has started properly
+      try {
+        let serviceStarted = false;
+        for (let i = 0; i < 3; i++) {
+          serviceStarted = await startUploadService();
+          if (serviceStarted) break;
           await new Promise(resolve => setTimeout(resolve, 1000));
-
-          if (!BackgroundJob.isRunning()) {
-            handleError('Background service failed to start properly');
-            Alert.alert(
-              "Perhatian",
-              "Layanan upload sedang diproses di latar belakang. Anda dapat melanjutkan menggunakan aplikasi.",
-              [{ text: "OK" }]
-            );
-          }
-
-          // Clear storage and reset states
-          await AsyncStorage.removeItem("startTime");
-          setPhotoModalVisible(false);
-          setTracking(false);
-          setPhotos([]);
-          setTime(0);
-          setCurrentLocation(null);
-          setUploadProgress(0);
-
-          // Show feedback to user
-          Alert.alert(
-            "Proses Upload",
-            "Foto sedang diunggah di latar belakang. Anda akan menerima notifikasi setelah proses selesai.",
-            [
-              {
-                text: "OK",
-                onPress: () => {
-                  setIsUploading(false);
-                  setIsCompleting(false);
-
-                  // Check if ticket extras should be shown
-                  if (ticketExtrasFlag === "true") {
-                    setTicketExtrasModalVisible(true);
-                  } else if (ticketExtrasFlag === "false") {
-                    AsyncStorage.removeItem("selectedTicket");
-                    setSelectedTicket(null);
-                    handleLog('Trip stopped');
-                    onRefresh();
-                  }
-                }
-              }
-            ]
-          );
-        } catch (error) {
-          handleError(`Failed to start upload service: ${error}`);
-          Alert.alert(
-            "Terjadi Kesalahan",
-            "Gagal memulai layanan upload. Silakan coba lagi.",
-            [
-              {
-                text: "OK",
-                onPress: () => {
-                  setIsUploading(false);
-                  setIsCompleting(false);
-                }
-              }
-            ]
-          );
         }
+
+        if (!serviceStarted || !BackgroundJob.isRunning()) {
+          handleError('Background service failed to start after multiple attempts');
+          Alert.alert(
+            "Perhatian",
+            "Gagal memulai layanan upload. Tiket tidak akan dihapus, silakan coba lagi nanti.",
+            [{
+              text: "OK",
+              onPress: () => {
+                setIsUploading(false);
+                setIsCompleting(false);
+              }
+            }]
+          );
+          return;
+        }
+
+        // Clear storage and reset states
+        await AsyncStorage.removeItem("startTime");
+        setPhotoModalVisible(false);
+        setTracking(false);
+        setPhotos([]);
+        setTime(0);
+        setCurrentLocation(null);
+        setUploadProgress(0);
+
+        // Show feedback to user
+        Alert.alert(
+          "Proses Upload",
+          "Foto sedang diunggah. Klik OK untuk melanjutkan mengisi Berita Acara.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                setIsUploading(false);
+                setIsCompleting(false);
+                setTimeout(() => {
+                  setTicketExtrasModalVisible(true);
+                }, 500); // Small delay to ensure UI is responsive
+              }
+            }
+          ]
+        );
+      } catch (error) {
+        handleError(`Failed to start upload service: ${error}`);
+        Alert.alert(
+          "Terjadi Kesalahan",
+          "Gagal memulai layanan upload. Silakan coba lagi.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                setIsUploading(false);
+                setIsCompleting(false);
+              }
+            }
+          ]
+        );
       }
     } catch (error) {
       handleError(`Error stopping trip: ${error}`);
