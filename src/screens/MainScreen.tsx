@@ -7,16 +7,16 @@ import { Picker } from '@react-native-picker/picker';
 import NetInfo from '@react-native-community/netinfo';
 import { Geofence, QueueItem, Ticket } from '../types';
 import { getCurrentPositionAsync } from 'expo-location';
+import { saveToLibraryAsync } from 'expo-media-library';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
 import { requestPermissionsAsync } from 'expo-media-library';
-import { getTickets, updateTicketExtras } from '../api/tickets';
 import { startUploadService } from "../utils/backgroundUploader";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getAllGeofences, getGeofencesByIds } from '../api/geofences';
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
@@ -109,57 +109,45 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [selectedTicket, geofence]);
 
-  // Fetch tickets dari API
-  const fetchTickets = useCallback(async () => {
+  // NEW optimized function that fetches tickets WITH their geofence data in one query
+  const fetchTicketsWithGeofences = useCallback(async () => {
     try {
-      if (userData) {
-        const response = await getTickets(userData.user_id);
-        setTickets(response);
+      if (!userData?.user_id) {
+        handleError("User data is missing");
+        return;
+      }
+
+      const assignedTicketsWithGeofences = await getTicketsWithGeofences(userData.user_id, 'assigned');
+      if (assignedTicketsWithGeofences.length > 0) {
+        const ticketsData = assignedTicketsWithGeofences.map(item => {
+          const { geofence_data, ...ticketOnly } = item;
+          return ticketOnly;
+        });
+        const geofencesData = assignedTicketsWithGeofences
+          .filter(item => item.geofence_data) // Only include tickets that have geofence data
+          .map(item => item.geofence_data);
+        setTickets(ticketsData);
+        setGeofence(geofencesData);
+        handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);
+      } else {
+        handleLog("No assigned tickets found");
       }
     } catch (error: any) {
-      handleError(`Error fetching tickets: ${error.message}`);
+      handleError(`Error in optimized fetch: ${error.message}`);
     }
   }, [userData]);
 
-  // Fetch geofences with optimized approach
-  const fetchGeofences = useCallback(async () => {
-    try {
-      const ticketsWithGeofenceIds = tickets
-        .filter(ticket => ticket.status === 'assigned')
-        .map(ticket => ticket.geofence_id);
-      if (ticketsWithGeofenceIds.length > 0) {
-        const geofencesByIds = await getGeofencesByIds(ticketsWithGeofenceIds);
-        if (geofencesByIds && geofencesByIds.length > 0) {
-          setGeofence(geofencesByIds);
-          return;
-        }
-      }
-      const response = await getAllGeofences();
-      setGeofence(response);
-    } catch (error: any) {
-      handleError(`Error fetching geofences: ${error.message}`);
-    }
-  }, [tickets]);
-
-  // Fetch tickets and geofences
+  // Fetch tickets using the optimized method
   useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+    fetchTicketsWithGeofences();
+  }, [fetchTicketsWithGeofences]);
 
-  // Update geofences whenever tickets change
-  useEffect(() => {
-    if (tickets.length > 0) {
-      fetchGeofences();
-    }
-  }, [tickets, fetchGeofences]);
-
-  // Handle pull-to-refresh
+  // Handle pull-to-refresh with optimized approach
   const onRefresh = async () => {
     setIsRefreshing(true);
     setSelectedTicket(null);
     setCurrentTicketID(null);
-    await fetchTickets();
-    await fetchGeofences();
+    await fetchTicketsWithGeofences();
     setIsRefreshing(false);
   };
 
@@ -271,24 +259,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setTime(0);
         setCurrentLocation(null);
         setUploadProgress(0);
-
-        // Show feedback to user
-        Alert.alert(
-          "Proses Upload",
-          "Foto sedang diunggah. Klik OK untuk melanjutkan mengisi Berita Acara.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                setIsUploading(false);
-                setIsCompleting(false);
-                setTimeout(() => {
-                  setTicketExtrasModalVisible(true);
-                }, 500); // Small delay to ensure UI is responsive
-              }
-            }
-          ]
-        );
+        setIsUploading(false);
+        setIsCompleting(false);
+        setTicketExtrasModalVisible(true);
       } catch (error) {
         handleError(`Failed to start upload service: ${error}`);
         Alert.alert(
@@ -406,12 +379,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           setTime(elapsed);
           setSelectedTicket(JSON.parse(storedTicket));
           setTracking(true);
+        } else if (storedTicket) {
+          setSelectedTicket(JSON.parse(storedTicket));
+          handleLog("Tiket dipilih dari halaman Tiket");
         }
       } catch (error: any) {
         handleError(`Error loading tracking data: ${error}`);
       }
     };
     loadTrackingData();
+    const unsubscribeFocus = navigation.addListener('focus', () => {
+      loadTrackingData();
+    });
+    return () => {
+      unsubscribeFocus();
+    };
   }, []);
 
   // Format time as HH:MM:SS
@@ -436,6 +418,31 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
   };
 
+  // Fungsi baru untuk menyimpan foto ke galeri
+  const savePhotoToGallery = async (photoUri: string): Promise<boolean> => {
+    try {
+      if (!photoUri || typeof photoUri !== 'string') {
+        handleError('Invalid photo URI untuk penyimpanan ke galeri');
+        return false;
+      }
+      const { status } = await requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Izin Diperlukan',
+          'Aplikasi memerlukan izin untuk menyimpan foto ke galeri sebagai cadangan.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+      await saveToLibraryAsync(photoUri);
+      handleLog(`✅ Foto berhasil disimpan ke galeri: ${photoUri.substring(photoUri.length - 20)}`);
+      return true;
+    } catch (error) {
+      handleError(`❌ Gagal menyimpan foto ke galeri: ${error}`);
+      return false;
+    }
+  };
+
   // Handle picking photo
   const handleTakePhoto = async () => {
     setIsPhotoProcessed(true);
@@ -449,6 +456,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         const index = photos.length;
         const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
         if (processedUri) {
+          await savePhotoToGallery(processedUri);
           if (photos.length >= requiredPhotoCount) {
             Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
             return;
@@ -1589,7 +1597,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             )}
 
             {!tracking && selectedTicket && (
-              <View className="gap-y-2">
+              <View className="z-10 gap-y-2">
                 <Text className="text-center text-gray-600">
                   <Text className="font-bold">ID Tiket:</Text> {selectedTicket.ticket_id}
                 </Text>

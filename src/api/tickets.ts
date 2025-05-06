@@ -1,4 +1,5 @@
 import { Ticket } from "../types";
+import supabase from "../utils/supabase";
 import { error as handleError } from '../utils/logHandler';
 
 // Get tickets by user ID from backend API
@@ -91,6 +92,46 @@ export const updateTicketExtras = async (ticket_id: string, extrasData: any): Pr
     }
   } catch (error) {
     handleError(`Error: ${error}`);
+    throw error;
+  }
+}
+
+/**
+ * Optimized function to fetch assigned tickets with related geofence data in a single query
+ * This significantly reduces data transfer and processing by only retrieving what's needed
+ * @param userId The ID of the user whose tickets to fetch
+ * @param status Optional filter for ticket status (defaults to 'assigned')
+ * @returns Array of Ticket objects with embedded geofence data
+ */
+export const getTicketsWithGeofences = async (
+  userId: string,
+  status: string = 'assigned'
+): Promise<any[]> => {
+  try {
+    // Use a direct Supabase join query to get tickets and their geofences in one go
+    const { data, error } = await supabase
+      .from('tickets')
+      .select(`
+        *,
+        geofence:geofences!geofence_id(*)
+      `)
+      .eq('user_id', userId)
+      .eq('status', status);
+
+    if (error) {
+      handleError(`Error fetching tickets with geofences: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    // Process the joined data to match the expected format in the UI
+    const processedData = data?.map(ticket => ({
+      ...ticket,
+      geofence_data: ticket.geofence // This contains the joined geofence data
+    })) || [];
+
+    return processedData;
+  } catch (error: any) {
+    handleError(`Error in getTicketsWithGeofences: ${error.message}`);
     throw error;
   }
 }

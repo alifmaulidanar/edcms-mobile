@@ -4,13 +4,14 @@ import { Geofence, Ticket } from "../types";
 import { setStringAsync } from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import { error as handleError } from '../utils/logHandler';
-import { getSingleTicket, getTickets } from "../api/tickets";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { downloadAsync, documentDirectory } from 'expo-file-system';
-import { getAllGeofences, getGeofencesByIds } from '../api/geofences';
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { getSingleTicket, getTicketsWithGeofences } from "../api/tickets";
+import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert, TextInput } from "react-native";
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
@@ -35,6 +36,7 @@ const openInGoogleMaps = (coordinates: [number, number]) => {
 };
 
 const TicketsScreen = () => {
+  const navigation = useNavigation();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [geofence, setGeofence] = useState<Geofence[]>([]);
   const [geofenceLookup, setGeofenceLookup] = useState<Record<string, Geofence>>({});
@@ -45,6 +47,8 @@ const TicketsScreen = () => {
   const [photos, setPhotos] = useState<any[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isAnyTicketInProgress, setIsAnyTicketInProgress] = useState(false);
   const [routes] = useState([
     { key: "active", title: "Aktif" },
     { key: "on_progress", title: "Berjalan" },
@@ -52,71 +56,118 @@ const TicketsScreen = () => {
     { key: "canceled", title: "Batal" },
   ]);
 
-  // Fetch tickets
-  const fetchTickets = useCallback(async () => {
+  // Fungsi untuk memilih dan membatalkan pilihan tiket
+  const selectTicket = async (ticket: Ticket) => {
     try {
-      if (userData) {
-        const response = await getTickets(userData.user_id);
-        setTickets(response);
+      const selectedTicketStr = await AsyncStorage.getItem("selectedTicket");
+      const currentSelectedTicket = selectedTicketStr ? JSON.parse(selectedTicketStr) : null;
+      if (currentSelectedTicket && currentSelectedTicket.ticket_id === ticket.ticket_id) {
+        await AsyncStorage.removeItem("selectedTicket");
+        setSelectedTicketId(null); // Reset state local
+        return;
       }
+      await AsyncStorage.setItem("selectedTicket", JSON.stringify(ticket));
+      setSelectedTicketId(ticket.ticket_id); // Set state local
+      // @ts-ignore - navigation.navigate memang menerima string sebagai parameter
+      // navigation.navigate('Main');
+    } catch (error) {
+      handleError(`Error selecting ticket: ${error}`);
+      Alert.alert(
+        "Gagal Memilih Tiket",
+        "Terjadi kesalahan saat memilih tiket. Silakan coba lagi.",
+        [{ text: "OK" }]
+      );
+    }
+  };
+
+  // NEW optimized function that fetches tickets WITH their geofence data in one query
+  const fetchTicketsWithGeofences = useCallback(async () => {
+    try {
+      if (!userData?.user_id) {
+        handleError("User data is missing");
+        return;
+      }
+
+      // Fetch all ticket statuses at once to avoid multiple API calls
+      const allTicketsWithGeofences = await Promise.all([
+        getTicketsWithGeofences(userData.user_id, 'assigned'),
+        getTicketsWithGeofences(userData.user_id, 'on_progress'),
+        getTicketsWithGeofences(userData.user_id, 'completed'),
+        getTicketsWithGeofences(userData.user_id, 'canceled')
+      ]);
+
+      // Process each status batch into a combined dataset
+      const processedTickets: Ticket[] = [];
+      const geofences: Geofence[] = [];
+      const geofenceLookupMap: Record<string, Geofence> = {};
+
+      // Process each batch of tickets with their geofences
+      allTicketsWithGeofences.forEach(batch => {
+        batch.forEach(item => {
+          const { geofence_data, ...ticketData } = item;
+          processedTickets.push(ticketData as Ticket);
+          if (geofence_data) {
+            geofences.push(geofence_data);
+            if (geofence_data.external_id) {
+              geofenceLookupMap[geofence_data.external_id] = geofence_data;
+            }
+          }
+        });
+      });
+      setTickets(processedTickets);
+      setGeofence(geofences);
+      setGeofenceLookup(geofenceLookupMap);
+      handleLog(`✅ Optimized fetch: ${processedTickets.length} tickets with ${geofences.length} unique geofences`);
     } catch (error: any) {
-      handleError(`Error fetching tickets: ${error.message}`);
+      handleError(`Error in optimized fetch: ${error.message}`);
     }
   }, [userData]);
 
-  // Fetch geofences with optimized approach
-  const fetchGeofences = useCallback(async () => {
-    try {
-      if (tickets.length > 0) {
-        const uniqueGeofenceIds = [...new Set(tickets.map(ticket => ticket.geofence_id))];
-        if (uniqueGeofenceIds.length > 0) {
-          const geofencesByIds = await getGeofencesByIds(uniqueGeofenceIds);
-          if (geofencesByIds && geofencesByIds.length > 0) {
-            setGeofence(geofencesByIds);
-            const lookup: Record<string, Geofence> = {};
-            geofencesByIds.forEach(g => {
-              if (g.external_id) {
-                lookup[g.external_id] = g;
-              }
-            });
-            setGeofenceLookup(lookup);
-            return;
-          }
+  useEffect(() => {
+    fetchTicketsWithGeofences();
+  }, [fetchTicketsWithGeofences]);
+
+  // Load selected ticket ID when component mounts
+  useEffect(() => {
+    const checkSelectedTicket = async () => {
+      try {
+        const selectedTicketStr = await AsyncStorage.getItem("selectedTicket");
+        if (selectedTicketStr) {
+          const currentSelectedTicket = JSON.parse(selectedTicketStr);
+          setSelectedTicketId(currentSelectedTicket.ticket_id);
         }
+      } catch (error) {
+        handleError(`Error checking selected ticket: ${error}`);
       }
+    };
+    checkSelectedTicket();
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkSelectedTicket();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
-      // Fallback to getAllGeofences if there are no specific IDs to fetch or if fetching by IDs failed
-      const response = await getAllGeofences();
-      setGeofence(response);
-      const lookup: Record<string, Geofence> = {};
-      response.forEach(g => {
-        if (g.external_id) {
-          lookup[g.external_id] = g;
-        }
-      });
-      setGeofenceLookup(lookup);
-    } catch (error: any) {
-      handleError(`Error fetching geofences: ${error.message}`);
-    }
-  }, [tickets]);
-
-  // Fetch tickets
+  // useEffect untuk memeriksa apakah ada tiket yang sedang berjalan (tracking)
   useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+    const checkTrackingStatus = async () => {
+      try {
+        const startTime = await AsyncStorage.getItem("startTime");
+        const storedTicket = await AsyncStorage.getItem("selectedTicket");
+        const isTracking = !!startTime && !!storedTicket;
+        setIsAnyTicketInProgress(isTracking);
+      } catch (error) {
+        handleError(`Error checking tracking status: ${error}`);
+      }
+    };
+    checkTrackingStatus();
+    const unsubscribe = navigation.addListener('focus', checkTrackingStatus);
+    return unsubscribe;
+  }, [navigation]);
 
-  // Update geofences whenever tickets change
-  useEffect(() => {
-    if (tickets.length > 0) {
-      fetchGeofences();
-    }
-  }, [tickets, fetchGeofences]);
-
-  // Handle pull-to-refresh
+  // Handle pull-to-refresh with optimized approach
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await fetchTickets();
-    await fetchGeofences();
+    await fetchTicketsWithGeofences();
     setIsRefreshing(false);
   };
 
@@ -178,7 +229,7 @@ const TicketsScreen = () => {
         if (sortOrder === "desc") {
           return valueA < valueB ? 1 : -1;
         }
-        return valueA > valueB ? 1 : -1;
+        return valueA > valueB ? -1 : 1;
       });
       return sorted;
     }, [tickets, searchText, sortKey, sortOrder, filterKey]);
@@ -292,6 +343,37 @@ const TicketsScreen = () => {
                         return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
                       })()}
                     </Text>
+                  )}
+                  {ticket.status === "assigned" && (
+                    <TouchableOpacity
+                      onPress={() => isAnyTicketInProgress ? null : selectTicket(ticket)}
+                      disabled={isAnyTicketInProgress}
+                      style={{
+                        backgroundColor: isAnyTicketInProgress
+                          ? "#9ca3af" // Abu-abu ketika disabled
+                          : selectedTicketId === ticket.ticket_id
+                            ? "#22c55e"
+                            : "#3B82F6",
+                        padding: 8,
+                        borderRadius: 4,
+                        marginTop: 8,
+                        flexDirection: 'row',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        opacity: isAnyTicketInProgress ? 0.6 : 1,
+                      }}
+                    >
+                      {selectedTicketId === ticket.ticket_id && !isAnyTicketInProgress && (
+                        <Ionicons name="checkmark-circle" size={16} color="white" style={{ marginRight: 4 }} />
+                      )}
+                      <Text style={{ color: "white", textAlign: "center" }}>
+                        {isAnyTicketInProgress
+                          ? "Tidak tersedia (tiket sedang berjalan)"
+                          : selectedTicketId === ticket.ticket_id
+                            ? "Terpilih (Klik untuk Batal)"
+                            : "Pilih"}
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </TouchableOpacity>

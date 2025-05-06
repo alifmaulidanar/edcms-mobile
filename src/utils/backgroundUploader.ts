@@ -1,5 +1,4 @@
 import { QueueItem } from '../types';
-import { saveToLibraryAsync } from 'expo-media-library';
 import BackgroundJob from 'react-native-background-actions';
 import { deleteAsync, readAsStringAsync } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -76,23 +75,10 @@ const processPhoto = async (photoUri: string, ticketId: string, timestamp: strin
       { compress: 0.3, format: SaveFormat.JPEG }
     );
 
-    // Timestamp and location
-    // const processedUri = await addTimestampToPhoto(
-    //   compressed.uri,
-    //   `${ticketId}-${timestamp}-${index}.jpg`,
-    //   timestamp,
-    //   location
-    // );
-
     if (!compressed.uri) {
       handleError('Failed to compress photo');
       throw new Error('Failed to compress photo');
     }
-
-    // Save to library
-    await saveToLibraryAsync(compressed.uri).catch((err) => {
-      handleError(`Failed to save photo to library: ${err}`);
-    });
 
     // Delete original photo to free up memory
     await deleteAsync(photoUri, { idempotent: true }).catch((err) => {

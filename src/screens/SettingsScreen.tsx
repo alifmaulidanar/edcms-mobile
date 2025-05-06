@@ -91,7 +91,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       <Text className="mt-4 mb-2 text-lg font-semibold text-gray-600">Log Aplikasi</Text>
       <TouchableOpacity
         className="flex-row items-center justify-between p-4 mb-2 bg-white rounded-lg"
-        onPress={() => {
+        onPress={async () => {
           Alert.alert(
             "Kirim Log",
             "Apakah Anda yakin ingin mengirim log ke server? Lakukan ini hanya jika diminta oleh Admin.",
@@ -100,7 +100,13 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
                 text: "Batal",
                 style: "cancel",
               },
-              { text: "Ya, kirim", onPress: handleSendLog },
+              {
+                text: "Ya, kirim",
+                onPress: async () => {
+                  await handleSendLog();
+                  Alert.alert("Berhasil", "Log berhasil dikirim ke server.");
+                },
+              },
             ]
           );
         }}
