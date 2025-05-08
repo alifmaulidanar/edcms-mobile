@@ -404,6 +404,59 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  // Initialize form data when selected ticket changes
+  useEffect(() => {
+    if (selectedTicket?.additional_info) {
+      setFormData(prevData => ({
+        ...prevData,
+        sn_edc: selectedTicket.additional_info?.sn_edc || prevData.sn_edc,
+        tid_mti: selectedTicket.additional_info?.tid || prevData.tid_mti,
+        tid_member_bank: prevData.tid_member_bank,
+        mid_mti: selectedTicket.additional_info?.mid || prevData.mid_mti,
+        mid_member_bank: prevData.mid_member_bank,
+        sim_card: selectedTicket.additional_info?.sn_sim_card || prevData.sim_card,
+        sam_card: selectedTicket.additional_info?.sn_sam_card || prevData.sam_card,
+        edc_description: prevData.edc_description,
+        edc_notes: selectedTicket.additional_info?.noted || prevData.edc_notes,
+        edc_cleaning: prevData.edc_cleaning,
+        edc_problem: prevData.edc_problem,
+        started_on: prevData.started_on,
+        vendor_code: "MDM",
+        task: selectedTicket.description || prevData.task,
+        thermal_supply: prevData.thermal_supply,
+        com_line: selectedTicket.additional_info?.connection_type || prevData.com_line,
+        profile_sticker: prevData.profile_sticker,
+        base_adaptor: prevData.base_adaptor,
+        settlement: prevData.settlement,
+        signal_bar: selectedTicket.additional_info?.signal_bar || prevData.signal_bar,
+        signal_type: selectedTicket.additional_info?.signal_type || prevData.signal_type,
+        edc_condition: selectedTicket.additional_info?.edc_condition || prevData.edc_condition,
+        merchant_name: prevData.merchant_name,
+        merchant_address: prevData.merchant_address,
+        merchant_location: prevData.merchant_location,
+        merchant_city: prevData.merchant_city,
+        pic_name: selectedTicket.additional_info?.contact_person_merchant || prevData.pic_name,
+        pic_phone: selectedTicket.additional_info?.phone_merchant || prevData.pic_phone,
+        member_bank_category: prevData.member_bank_category,
+        edc_priority: selectedTicket.additional_info?.priority_edc || prevData.edc_priority,
+        edc_count: prevData.edc_count,
+        thermal_stock: prevData.thermal_stock,
+        manual_book: prevData.manual_book,
+        merchant_condition: selectedTicket.additional_info?.merchant_condition || prevData.merchant_condition,
+        merchant_comment: selectedTicket.additional_info?.merchant_comment || prevData.merchant_comment,
+        training_trx_qr: prevData.training_trx_qr,
+        training_trx_prepaid: prevData.training_trx_prepaid,
+        training_trx_credit: prevData.training_trx_credit,
+        training_trx_debit: prevData.training_trx_debit,
+        usual_edc: selectedTicket.additional_info?.edc_yang_sering_digunakan || prevData.usual_edc,
+        other_edc: selectedTicket.additional_info?.edc_bank_lainnya || prevData.other_edc,
+        merchant_request: selectedTicket.additional_info?.merchant_request || prevData.merchant_request,
+        promo_material: selectedTicket.additional_info?.promo_matrial_ || prevData.promo_material,
+        case_remaks: selectedTicket.additional_info?.case_remaks || prevData.case_remaks,
+      }));
+    }
+  }, [selectedTicket]);
+
   const addToQueue = async (photos: string[], ticketId: string, userId: string) => {
     setIsPhotoProcessed(false);
     const newItem: QueueItem = {
@@ -509,13 +562,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const photoTitles = [
-    'Foto BAST',
-    'Foto Roll Sales Draft',
-    'Foto SIM Card + SN EDC + SAM Card',
-    'Foto Surat Pernyataan Training',
-    'Foto Sales Draf',
     'Foto Plang',
     'Foto EDC',
+    'Foto SIM Card + SN EDC + SAM Card',
+    'Foto Roll Sales Draft',
+    'Foto Sales Draf',
+    'Foto Surat Pernyataan Training',
+    'Foto BAST',
     'Foto PIC Merchant'
   ];
 
@@ -546,6 +599,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     settlement: false,
     signal_bar: "",
     signal_type: "",
+    edc_condition: "",
 
     // MERCHANT DETAILS
     merchant_name: "",
@@ -559,6 +613,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     edc_count: 1,
     thermal_stock: 0,
     manual_book: false,
+    merchant_condition: "",
     merchant_comment: "",
 
     // TRAINING DETAILS
@@ -572,6 +627,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     other_edc: "",
     merchant_request: "",
     promo_material: "",
+    case_remaks: "",
   });
 
   // Function untuk mengupdate data form
@@ -641,6 +697,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         settlement: false,
         signal_bar: "",
         signal_type: "",
+        edc_condition: "",
 
         // MERCHANT DETAILS
         merchant_name: "",
@@ -654,6 +711,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         edc_count: 1,
         thermal_stock: 0,
         manual_book: false,
+        merchant_condition: "",
         merchant_comment: "",
 
         // TRAINING DETAILS
@@ -667,6 +725,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         other_edc: "",
         merchant_request: "",
         promo_material: "",
+        case_remaks: "",
       });
       onRefresh();
     } catch (error) {
@@ -955,7 +1014,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       >
         <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
           <View className="w-[350px] max-w-lg p-6 bg-white rounded-lg">
-            <Text className="mb-4 text-xl font-bold text-center">Berita Acara</Text>
+            <Text className="mb-2 text-xl font-bold text-center">Berita Acara</Text>
+            <Text className="mb-4 text-sm text-center">Isilah formulir ini di bawah secara lengkap.</Text>
 
             <ScrollView style={{ maxHeight: 600 }} showsVerticalScrollIndicator={true} fadingEdgeLength={200} alwaysBounceVertical={true} bounces={true} persistentScrollbar={true}>
               {/* 1. EDC Detail */}
@@ -1200,7 +1260,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Com Line</Text>
                     <TextInput
-                      value={formData.com_line}
+                      value={formData.com_line || selectedTicket?.additional_info?.connection_type}
                       onChangeText={(text) => handleInputChangeTicketExtras("com_line", text)}
                       // placeholder="Com Line"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
@@ -1280,8 +1340,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={formData.signal_bar || selectedTicket?.additional_info?.signal_bar}
                       onChangeText={(text) => handleInputChangeTicketExtras("signal_bar", text)}
                       // placeholder="TID MTI"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
-                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      className="p-2 mt-2 border border-gray-300 rounded-md"
                     />
                   </View>
                   <View className="flex-1 mb-4">
@@ -1291,10 +1350,30 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={formData.signal_type || selectedTicket?.additional_info?.signal_type}
                       onChangeText={(text) => handleInputChangeTicketExtras("signal_type", text)}
                       // placeholder="Signal Type"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
-                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      className="p-2 mt-2 border border-gray-300 rounded-md"
                     />
                   </View>
+                </View>
+
+                <View className="flex-1 mb-4">
+                  <Text className="text-sm text-gray-600">Kondisi EDC</Text>
+                  <Picker
+                    selectedValue={formData.edc_condition || selectedTicket?.additional_info?.edc_condition}
+                    onValueChange={(value) => handleInputChangeTicketExtras("edc_condition", value)}
+                    style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                  >
+                    <Picker.Item style={{ fontSize: 12 }} label="Pilih kondisi EDC..." value="" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Kondisi EDC Baik" value="Kondisi EDC Baik" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Done Penarikan" value="Done Penarikan" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Done Pergantian" value="Done Pergantian" />
+                    <Picker.Item style={{ fontSize: 12 }} label="EDC Berhasil Dipasang" value="EDC Berhasil Dipasang" />
+                    <Picker.Item style={{ fontSize: 12 }} label="EDC Tidak Ada di Lokasi" value="EDC Tidak Ada di Lokasi" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Merchant Tutup Permanen" value="Merchant Tutup Permanen" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Merchant Tutup Sementara" value="Merchant Tutup Sementara" />
+                    <Picker.Item style={{ fontSize: 12 }} label="EDC Disimpan" value="EDC Disimpan" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Jaringan Problem" value="Jaringan Problem" />
+                    <Picker.Item style={{ fontSize: 12 }} label="Device Problem" value="Device Problem" />
+                  </Picker>
                 </View>
               </View>
 
@@ -1436,20 +1515,52 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       <Text className="text-sm text-gray-600">Tidak</Text>
                     </View>
                   </View>
-                </View>
-                <View className="flex-row flex-wrap gap-x-4 gap-y-4">
-                  <View className="flex-1 mb-4">
-                    <Text className="text-sm text-gray-600">Komentar Merchant</Text>
-                    <TextInput
-                      // value={formData.merchant_comment}
-                      value={formData.merchant_comment || selectedTicket?.additional_info?.merchant_comment}
-                      onChangeText={(text) => handleInputChangeTicketExtras("merchant_comment", text)}
-                      // placeholder="Komentar Merchant"
-                      multiline
-                      numberOfLines={3}
-                      textAlignVertical="top"
-                      className="h-20 p-2 mt-2 border border-gray-300 rounded-md"
-                    />
+
+                  <View className="mt-4 mb-4">
+                    <Text className="text-sm text-gray-600">Kondisi Merchant</Text>
+                    <View className="flex-row mt-2 space-x-4">
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="Baik"
+                          status={formData.merchant_condition === "Baik" || (!formData.merchant_condition && selectedTicket?.additional_info?.merchant_condition === "Baik") ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("merchant_condition", "Baik")}
+                        />
+                        <Text className="text-sm text-gray-600">Baik</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="Problem Non Teknis"
+                          status={formData.merchant_condition === "Problem Non Teknis" || (!formData.merchant_condition && selectedTicket?.additional_info?.merchant_condition === "Problem Non Teknis") ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("merchant_condition", "Problem Non Teknis")}
+                        />
+                        <Text className="text-sm text-gray-600">Problem Non Teknis</Text>
+                      </View>
+                    </View>
+                    <View className="flex-row mt-2 space-x-4">
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="Problem Teknis"
+                          status={formData.merchant_condition === "Problem Teknis" || (!formData.merchant_condition && selectedTicket?.additional_info?.merchant_condition === "Problem Teknis") ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("merchant_condition", "Problem Teknis")}
+                        />
+                        <Text className="text-sm text-gray-600">Problem Teknis</Text>
+                      </View>
+                    </View>
+                    <View className="flex-row flex-wrap mt-4 gap-x-4 gap-y-4">
+                      <View className="flex-1 mb-4">
+                        <Text className="text-sm text-gray-600">Komentar Merchant</Text>
+                        <TextInput
+                          // value={formData.merchant_comment}
+                          value={formData.merchant_comment || selectedTicket?.additional_info?.merchant_comment}
+                          onChangeText={(text) => handleInputChangeTicketExtras("merchant_comment", text)}
+                          // placeholder="Komentar Merchant"
+                          multiline
+                          numberOfLines={3}
+                          textAlignVertical="top"
+                          className="h-20 p-2 mt-2 border border-gray-300 rounded-md"
+                        />
+                      </View>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -1552,6 +1663,24 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               </View>
 
+              {/* 7. Remarks */}
+              <View>
+                <Text className="mt-2 mb-4 font-bold underline">7. Remarks</Text>
+                <View className="flex-row flex-wrap gap-x-4 gap-y-4">
+                  <View className="flex-1 mb-4">
+                    <Text className="text-sm text-gray-600">Remarks / Notes (case_remaks)</Text>
+                    <TextInput
+                      value={formData.case_remaks || selectedTicket?.additional_info?.case_remaks}
+                      onChangeText={(text) => handleInputChangeTicketExtras("case_remaks", text)}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                      className="h-20 p-2 mt-2 border border-gray-300 rounded-md"
+                    />
+                  </View>
+                </View>
+              </View>
+
               {/* Submit Button */}
               <TouchableOpacity
                 onPress={handleSubmitTicketExtras}
@@ -1562,7 +1691,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 {isSubmittingTicketExtras ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-xl font-bold text-white">Simpan</Text>
+                  <Text className="text-xl font-bold text-white">Simpan Berita Acara</Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
@@ -1670,6 +1799,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           {tracking && (
             <Text className="mb-4 text-xl text-center">{formatTime(time)}</Text>
           )}
+
+          {/* <View className="z-20 flex-row items-center justify-center w-full gap-x-2">
+            <TouchableOpacity
+              onPress={() => setPhotoModalVisible(true)}
+              className="p-1 bg-red-500 rounded-full top-2 right-2"
+            >
+              <Text className="text-white">Debug photo modal</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setTicketExtrasModalVisible(true)}
+              className="p-1 bg-blue-500 rounded-full top-2 right-2"
+            >
+              <Text className="text-white">Debug berita acara modal</Text>
+            </TouchableOpacity>
+          </View> */}
 
           {/* Idle */}
           {!tracking ? (
