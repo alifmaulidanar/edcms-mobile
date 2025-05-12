@@ -8,15 +8,15 @@ import { initializeRadar } from "./src/utils/radar";
 import LoginScreen from "./src/screens/LoginScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import TabsNavigator from "./src/navigation/TabsNavigator";
-import { View, Text, StatusBar, Linking, AppState } from "react-native";
-import { error as handleError, log as handleLog } from "./src/utils/logHandler";
+import BackgroundJob from 'react-native-background-actions';
 import { createStackNavigator } from "@react-navigation/stack";
 import { NavigationContainer } from "@react-navigation/native";
 import ForgotPasswordModal from "./src/components/ForgotPassword";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import BackgroundJob from 'react-native-background-actions';
+import { View, Text, StatusBar, Linking, AppState } from "react-native";
+import { error as handleError, log as handleLog } from "./src/utils/logHandler";
 import { isUploadInProgress, startUploadService } from "./src/utils/backgroundUploader";
 
 // Constants for route names
@@ -28,7 +28,7 @@ const Routes = {
 };
 
 const linking = {
-  prefixes: [`${process.env.EXPO_PUBLIC_LINKING_URI}://`],
+  prefixes: ['pastimsedc://'],
   config: {
     screens: {
       Login: {

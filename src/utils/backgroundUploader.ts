@@ -16,6 +16,7 @@ const isValidQueueItem = (item: any): item is QueueItem => {
     Array.isArray(item?.photos) &&
     item.photos.every((photo: any) => typeof photo === 'string') &&
     (typeof item?.attempts === 'number' || item?.attempts === undefined) && // Optional number
+    (typeof item?.photoStartIndex === 'number' || item?.photoStartIndex === undefined) && // Optional photo start index
     item?.timestamp !== undefined && // Any type
     item?.location !== undefined // Any type
   );
@@ -214,10 +215,12 @@ const uploadWorker = async (taskData: any) => {
 
           // Upload to server
           const formData = new FormData();
+          const photoStartIndex = currentJob.photoStartIndex || 0; // Use photoStartIndex if provided, default to 0
           processedPhotos.forEach((uri, index) => {
+            const photoIndex = photoStartIndex + index; // Calculate the actual photo index
             formData.append('photos', {
               uri,
-              name: `${currentJob.ticket_id}-${currentJob.timestamp}-${index}.jpg`,
+              name: `${currentJob.ticket_id}-${currentJob.timestamp}-${photoIndex}.jpg`,
               type: 'image/jpeg',
             } as any);
           });

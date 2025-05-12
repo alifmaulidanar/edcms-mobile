@@ -441,6 +441,32 @@ const TicketsScreen = () => {
     return data;
   }
 
+  const photoTitles = [
+    // Phase 1 (1-5)
+    'Foto Plang',
+    'Foto EDC',
+    'Foto Stiker EDC',
+    'Foto Screen Gard',
+    'Foto SIM Card + SN EDC + SAM Card',
+    // Phase 2 (6-10)
+    'Foto Sales Draft',
+    'Foto PIC Merchant',
+    'Foto Roll Sales Draft',
+    'Foto Surat Pernyataan Training',
+    'Foto Aplikasi EDC',
+    // Phase 3 (11-15)
+    'Foto Sales Draft Patch L (EDC Konven)',
+    'Foto Screen P2G (EDC Android)',
+    'Foto BAST',
+    'Foto Sales Draft All Member Bank (tampak logo bank)',
+    'Foto Sales Draft BMRI',
+    // Phase 4 (16-19)
+    'Foto Sales Draft BNI',
+    'Foto Sales Draft BRI',
+    'Foto Sales Draft BTN',
+    'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
+  ];
+
   return (
     <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
       <Text className="px-6 pt-4 text-2xl font-semibold text-gray-700">
@@ -578,27 +604,48 @@ const TicketsScreen = () => {
                     <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true}>
 
                       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-                        {photos.map((photo, index) => (
-                          <TouchableOpacity
-                            key={index}
-                            onPress={() => setPreviewPhoto(photo.url)}
-                            style={{
-                              width: "50%",
-                              aspectRatio: 1,
-                              borderRadius: 8,
-                              overflow: "hidden",
-                              backgroundColor: "#f3f4f6",
-                              borderWidth: 1,
-                              borderColor: "#e5e7eb",
-                            }}
-                          >
-                            <Image
-                              source={{ uri: photo.url }}
-                              style={{ width: "100%", height: "100%" }}
-                              resizeMode="cover"
-                            />
-                          </TouchableOpacity>
-                        ))}
+                        {photos
+                          .sort((a, b) => {
+                            const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
+                            const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
+                            return indexA - indexB;
+                          })
+                          .map((photo, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              onPress={() => setPreviewPhoto(photo.url)}
+                              style={{
+                                width: "50%",
+                                aspectRatio: 1,
+                                borderRadius: 8,
+                                overflow: "hidden",
+                                backgroundColor: "#f3f4f6",
+                                borderWidth: 1,
+                                borderColor: "#e5e7eb",
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Image
+                                source={{ uri: photo.url }}
+                                style={{ width: "100%", height: "100%" }}
+                                resizeMode="cover"
+                              />
+                              <View
+                                style={{
+                                  position: "absolute",
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  backgroundColor: "rgba(0, 0, 0, 0.7)",
+                                  padding: 4,
+                                }}
+                              >
+                                <Text style={{ color: "white", fontSize: 12, textAlign: "center" }}>
+                                  {photoTitles[index] || `Foto ${index + 1}`}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
                       </View>
                     </ScrollView>
                   )}

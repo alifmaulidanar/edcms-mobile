@@ -1,28 +1,25 @@
 import moment from "moment-timezone";
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
+import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import NetInfo from '@react-native-community/netinfo';
-import { Geofence, QueueItem, Ticket } from '../types';
 import { getCurrentPositionAsync } from 'expo-location';
-import { saveToLibraryAsync } from 'expo-media-library';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
 import { requestPermissionsAsync } from 'expo-media-library';
 import { startUploadService } from "../utils/backgroundUploader";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
 import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
-import { addTimestampToPhoto } from "../components/ImageTimestampAndLocation";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
-import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, Image, ActivityIndicator, TextInput } from "react-native";
+import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, Platform } from "react-native";
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-const requiredPhotoCount = parseInt(process.env.EXPO_PUBLIC_REQUIRED_PHOTO_COUNT || '8');
 // const ticketExtrasFlag = process.env.EXPO_PUBLIC_FEATURE_FLAG_ENABLE_TICKET_EXTRAS;
 
 type RootStackParamList = {
@@ -40,24 +37,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [timestamp, setTimestamp] = useState(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss"));
   const [tracking, setTracking] = useState(false);
   const [time, setTime] = useState(0);  // To store the time in seconds
+  const [multiPhasePhotoModalVisible, setMultiPhasePhotoModalVisible] = useState(false); // For multi-phase photo capture
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [geofence, setGeofence] = useState<Geofence[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [additionalInfoModalVisible, setAdditionalInfoModalVisible] = useState(false);
   const [ticketExtrasModalVisible, setTicketExtrasModalVisible] = useState(false);
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploadMessage, setUploadMessage] = useState<string>("");
-  const [isUploading, setIsUploading] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [currentTicketID, setCurrentTicketID] = useState<string | null>(null);
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
-  const [isPhotoProcessed, setIsPhotoProcessed] = useState(false);
   const [isSubmittingTicketExtras, setIsSubmittingTicketExtras] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [currentDateField, setCurrentDateField] = useState<string>('');
   // const [ticketExtrasFlag, setTicketExtrasFlag] = useState<string>("true"); // Default to show ticket extras
 
   // Get user data from Redux store
@@ -188,101 +181,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     if (!ticket_id || typeof ticket_id !== 'string') {
       handleError('Ticket ID is not valid');
       Alert.alert("Tiket Tidak Ditemukan", "Tidak ada tiket yang dipilih.");
+      setIsCompleting(false);
       return;
     }
-    if (photos.length < requiredPhotoCount) {
+
+    try {
       const { status } = await requestPermissionsAsync();
       if (status !== 'granted') {
         handleError('Izin lokasi tidak diberikan');
+        setIsCompleting(false);
         return;
       }
       const location = await getCurrentPositionAsync({});
-      setTimestamp(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss")); // timestamp
-      setCurrentLocation(location); // current location
-      setPhotoModalVisible(true);
-      return;
-    }
-  };
-
-  // Handle Stop Tracking (Finish Trip) with better error handling and state management
-  const handleStop = async () => {
-    try {
-      if (!selectedTicket?.ticket_id) {
-        handleError('No ticket ID available for stopping tracking');
-        Alert.alert("Perhatian", "Data tiket masing dimuat. Mohon tunggu beberapa saat dengan tetap membuka aplikasi.");
-        setIsCompleting(false);
-        setIsUploading(false);
-        return;
-      }
-      await stopBackgroundTracking(selectedTicket.ticket_id);
-      setIsUploading(true);
-      const queue = JSON.parse(await AsyncStorage.getItem('uploadQueue') || '[]');
-      if (!queue.length) {
-        handleError('No photos in upload queue');
-        Alert.alert(
-          "Perhatian",
-          "Tidak ada foto untuk diunggah. Silakan ambil foto terlebih dahulu.",
-          [{ text: "OK", onPress: () => setIsUploading(false) }]
-        );
-        return;
-      }
-
-      try {
-        let serviceStarted = false;
-        for (let i = 0; i < 3; i++) {
-          serviceStarted = await startUploadService();
-          if (serviceStarted) break;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-
-        if (!serviceStarted || !BackgroundJob.isRunning()) {
-          handleError('Background service failed to start after multiple attempts');
-          Alert.alert(
-            "Perhatian",
-            "Gagal memulai layanan upload. Tiket tidak akan dihapus, silakan coba lagi nanti.",
-            [{
-              text: "OK",
-              onPress: () => {
-                setIsUploading(false);
-                setIsCompleting(false);
-              }
-            }]
-          );
-          return;
-        }
-
-        // Clear storage and reset states
-        await AsyncStorage.removeItem("startTime");
-        setPhotoModalVisible(false);
-        setTracking(false);
-        setPhotos([]);
-        setTime(0);
-        setCurrentLocation(null);
-        setUploadProgress(0);
-        setIsUploading(false);
-        setIsCompleting(false);
-        setTicketExtrasModalVisible(true);
-      } catch (error) {
-        handleError(`Failed to start upload service: ${error}`);
-        Alert.alert(
-          "Terjadi Kesalahan",
-          "Gagal memulai layanan upload. Silakan coba lagi.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                setIsUploading(false);
-                setIsCompleting(false);
-              }
-            }
-          ]
-        );
-      }
+      setTimestamp(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss"));
+      setCurrentLocation(location);
+      setMultiPhasePhotoModalVisible(true);
     } catch (error) {
-      handleError(`Error stopping trip: ${error}`);
-      setIsUploading(false);
+      handleError(`Error in handleCompleteTrip: ${error}`);
       setIsCompleting(false);
-      Alert.alert("Kesalahan", "Terjadi kesalahan saat menyelesaikan pekerjaan. Silakan coba lagi.");
+      Alert.alert("Error", "Terjadi kesalahan saat mempersiapkan pengambilan foto. Silakan coba lagi.");
     }
   };
 
@@ -457,121 +374,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [selectedTicket]);
 
-  const addToQueue = async (photos: string[], ticketId: string, userId: string) => {
-    setIsPhotoProcessed(false);
-    const newItem: QueueItem = {
-      ticket_id: ticketId,
-      user_id: userId,
-      photos,
-      timestamp,
-      location: currentLocation,
-    };
-    const queue = JSON.parse(await AsyncStorage.getItem('uploadQueue') || '[]');
-    const newQueue = [...queue, newItem];
-    await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
-  };
-
-  // Fungsi baru untuk menyimpan foto ke galeri
-  const savePhotoToGallery = async (photoUri: string): Promise<boolean> => {
-    try {
-      if (!photoUri || typeof photoUri !== 'string') {
-        handleError('Invalid photo URI untuk penyimpanan ke galeri');
-        return false;
-      }
-      const { status } = await requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Izin Diperlukan',
-          'Aplikasi memerlukan izin untuk menyimpan foto ke galeri sebagai cadangan.',
-          [{ text: 'OK' }]
-        );
-        return false;
-      }
-      await saveToLibraryAsync(photoUri);
-      handleLog(`✅ Foto berhasil disimpan ke galeri: ${photoUri.substring(photoUri.length - 20)}`);
-      return true;
-    } catch (error) {
-      handleError(`❌ Gagal menyimpan foto ke galeri: ${error}`);
-      return false;
-    }
-  };
-
-  // Handle picking photo
-  const handleTakePhoto = async () => {
-    setIsPhotoProcessed(true);
-    try {
-      const result = await launchCameraAsync({
-        mediaTypes: MediaTypeOptions.Images,
-        quality: 0.5,
-      });
-      if (!result.canceled && result.assets.length > 0) {
-        const photoUri = result.assets[0].uri;
-        const index = photos.length;
-        const processedUri = await addTimestampToPhoto(photoUri, `${selectedTicket?.ticket_id}-${timestamp}-${index}.jpg`, timestamp, currentLocation);
-        if (processedUri) {
-          await savePhotoToGallery(processedUri);
-          if (photos.length >= requiredPhotoCount) {
-            Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
-            return;
-          }
-          if (photos.length < requiredPhotoCount) {
-            const newPhotos = [...photos, processedUri];
-            setPhotos(newPhotos);
-            setIsPhotoProcessed(false);
-            if (newPhotos.length === requiredPhotoCount) {
-              if (selectedTicket?.ticket_id && userData?.user_id) {
-                await addToQueue(newPhotos, selectedTicket.ticket_id, userData.user_id);
-              }
-            }
-          } else {
-            Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto.`);
-          }
-        } else {
-          handleError("Failed to process photo");
-          Alert.alert("Gagal memproses foto", "Silakan coba lagi.");
-        }
-      }
-    } catch (error) {
-      handleError(`Error taking photo: ${error}`);
-      Alert.alert("Waktu habis", "Pengambilan foto memakan waktu terlalu lama. Silakan coba lagi.");
-    } finally {
-      setIsPhotoProcessed(false);
-    }
-  };
-
-  // Handle photo preview
-  const handlePreviewPhoto = (uri: string) => { setPreviewPhoto(uri) };
-
-  // Handle delete photo
-  const handleDeletePhoto = (index: number) => {
-    Alert.alert(
-      "Hapus Foto",
-      "Anda ingin menghapus foto ini?",
-      [
-        { text: "Batal", style: "cancel" },
-        {
-          text: "Hapus",
-          style: "destructive",
-          onPress: () => {
-            const updatedPhotos = photos.filter((_, i) => i !== index);
-            setPhotos(updatedPhotos);
-          },
-        },
-      ]
-    );
-  };
-
-  const photoTitles = [
-    'Foto Plang',
-    'Foto EDC',
-    'Foto SIM Card + SN EDC + SAM Card',
-    'Foto Roll Sales Draft',
-    'Foto Sales Draf',
-    'Foto Surat Pernyataan Training',
-    'Foto BAST',
-    'Foto PIC Merchant'
-  ];
-
   const [formData, setFormData] = useState({
     // EDC DETAILS
     sn_edc: "",
@@ -615,12 +417,49 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     manual_book: false,
     merchant_condition: "",
     merchant_comment: "",
+    merchant_eligibility: "",
+    edc_active_trx: false,
+    no_tel_ty_pic: false,
+
+    // TANDA EDC RUSAK
+    kondisi_edc_baik: true,
+    masalah_baterai: false,
+    masalah_layar: false,
+    masalah_tombol: false,
+    masalah_print: false,
+    edc_restart: false,
+    masalah_fisik: false,
+    masalah_port_charger: false,
+    masalah_card_reader: false,
+
+    // KONDISI MERCHANT 3 BULAN KE DEPAN
+    merchant_normal: true,
+    merchant_tutup_sementara: false,
+    merchant_tutup_permanen: false,
+    merchant_renovasi: false,
+    merchant_pindah_lokasi: false,
+    merchant_tutup_sementara_date: "",
+    merchant_tutup_permanen_date: "",
+    merchant_renovasi_date: "",
+    merchant_pindah_lokasi_date: "",
 
     // TRAINING DETAILS
     training_trx_qr: false,
     training_trx_prepaid: false,
     training_trx_credit: false,
     training_trx_debit: false,
+    sale_void_settlement_logon: false,
+    installment: false,
+    audit_report: false,
+    top_up: false,
+    redeem_point: false,
+    cardver_preauth_offline: false,
+    manual_key_in: false,
+    mini_atm: false,
+    fare_nonfare: false,
+    dsc_download_bin: false,
+    first_level_maintenance: false,
+    penyimpanan_struk_trx: false,
 
     // OTHER DETAILS
     usual_edc: "",
@@ -666,10 +505,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       setTimeout(() => {
         setIsSubmittingTicketExtras(false);
         setTicketExtrasModalVisible(false);
-        alert("Data berhasil disimpan!");
+        alert("Data berhasil disimpan! Tiket telah ditandai selesai.");
       }, 2000);
-      await AsyncStorage.removeItem("selectedTicket");
+      // Reset states
+      setTracking(false);
+      setTime(0);
+      setCurrentLocation(null);
+      setIsCompleting(false);
       setSelectedTicket(null);
+
+      // Clear storage
+      await AsyncStorage.removeItem("selectedTicket");
+      await AsyncStorage.removeItem("startTime");
       setFormData({
         // EDC DETAILS
         sn_edc: "",
@@ -713,12 +560,49 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         manual_book: false,
         merchant_condition: "",
         merchant_comment: "",
+        merchant_eligibility: "",
+        edc_active_trx: false,
+        no_tel_ty_pic: false,
+
+        // TANDA EDC RUSAK
+        kondisi_edc_baik: true,
+        masalah_baterai: false,
+        masalah_layar: false,
+        masalah_tombol: false,
+        masalah_print: false,
+        edc_restart: false,
+        masalah_fisik: false,
+        masalah_port_charger: false,
+        masalah_card_reader: false,
+
+        // KONDISI MERCHANT 3 BULAN KE DEPAN
+        merchant_normal: true,
+        merchant_tutup_sementara: false,
+        merchant_tutup_permanen: false,
+        merchant_renovasi: false,
+        merchant_pindah_lokasi: false,
+        merchant_tutup_sementara_date: "",
+        merchant_tutup_permanen_date: "",
+        merchant_renovasi_date: "",
+        merchant_pindah_lokasi_date: "",
 
         // TRAINING DETAILS
         training_trx_qr: false,
         training_trx_prepaid: false,
         training_trx_credit: false,
         training_trx_debit: false,
+        sale_void_settlement_logon: false,
+        installment: false,
+        audit_report: false,
+        top_up: false,
+        redeem_point: false,
+        cardver_preauth_offline: false,
+        manual_key_in: false,
+        mini_atm: false,
+        fare_nonfare: false,
+        dsc_download_bin: false,
+        first_level_maintenance: false,
+        penyimpanan_struk_trx: false,
 
         // OTHER DETAILS
         usual_edc: "",
@@ -759,19 +643,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Cleanup function untuk modal
-  const handleClosePhotoModal = () => {
-    if (isUploading) {
-      Alert.alert("Perhatian", "Upload sedang berlangsung. Tunggu hingga selesai.");
-      return;
-    }
-    setPhotoModalVisible(false);
-    setIsUploading(false);
-    setIsCompleting(false);
-    setUploadProgress(0);
-    setUploadMessage("");
-  };
-
   const geofenceLookup = useMemo(() => {
     const lookup: { [key: string]: Geofence } = {};
     geofence.forEach((g) => {
@@ -779,6 +650,31 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     });
     return lookup;
   }, [geofence]);
+  const handleShowDatePicker = (fieldName: string) => {
+    setCurrentDateField(fieldName);
+    setShowDatePicker(true);
+  };
+
+  // Format date for display
+  const formatDateForDisplay = (isoString: string | undefined): string => {
+    if (!isoString) return "YYYY-MM-DD";
+    try {
+      return moment(isoString)
+        .tz("Asia/Jakarta")
+        .format("DD MMM YYYY");
+    } catch (error) {
+      return "YYYY-MM-DD";
+    }
+  };
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (selectedDate) {
+      const formattedDate = selectedDate.toISOString(); // timestampz
+      handleInputChangeTicketExtras(currentDateField, formattedDate);
+    }
+  };
 
   return (
     <ScrollView
@@ -844,167 +740,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Photo Modal */}
-      <Modal
-        visible={photoModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={handleClosePhotoModal}
-      // onRequestClose={() => {
-      //   if (!isUploading && photoModalVisible) {
-      //     setPhotoModalVisible(false);
-      //   }
-      // }}
-      >
-        <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
-          <View className="w-11/12 max-w-lg p-6 bg-white rounded-lg">
-            <Text className={`text-sm font-bold text-center py-2 px-4 rounded-full ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-              {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
-            </Text>
-            <Text className="mb-2 text-lg font-bold">Ambil {requiredPhotoCount} Bukti Foto.</Text>
-            <Text className="mb-4 text-gray-500">Ambil {requiredPhotoCount} foto berikut untuk menyelesaikan tiket.</Text>
-
-            {/* Photo Grid */}
-            <ScrollView style={{ maxHeight: 550 }} showsVerticalScrollIndicator={true}>
-              <View className="flex flex-row flex-wrap justify-between gap-2 mb-4">
-                {Array.from({ length: requiredPhotoCount }).map((_, index) => (
-                  <View
-                    key={index}
-                    className="relative overflow-hidden bg-gray-100 border border-gray-300 rounded-md"
-                    style={{ width: "48%", aspectRatio: 1 }}
-                  >
-                    <View className="p-1 bg-gray-700 rounded-t-sm">
-                      <Text className="px-1 text-sm text-white">{index + 1}. {photoTitles[index]}</Text>
-                    </View>
-                    {photos[index] ? (
-                      <TouchableOpacity
-                        onPress={() => handlePreviewPhoto(photos[index])}
-                      >
-                        <Image
-                          source={{ uri: photos[index] }}
-                          style={{ width: "100%", height: "100%" }}
-                          resizeMode="cover"
-                        />
-                        <TouchableOpacity
-                          onPress={() => handleDeletePhoto(index)}
-                          className="absolute p-1 bg-red-500 rounded-full top-2 right-2"
-                        >
-                          <Ionicons name="trash" size={20} color="white" />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    ) : (
-                      <Text className="py-4 text-center text-gray-600">Belum ada foto</Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
-
-            {/* Action Button */}
-            {photos.length === requiredPhotoCount ? (
-              <TouchableOpacity
-                onPress={async () => {
-                  if (!selectedTicket || !userData) return;
-                  setIsUploading(true);
-                  handleStop();
-                }}
-                className={`items-center px-8 py-4 my-4 rounded-full ${!isConnected ? "bg-gray-300" : "bg-blue-500"}`}
-                activeOpacity={0.7}
-                disabled={!isConnected}
-              >
-                {isUploading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-xl font-bold text-white">Unggah foto</Text>
-                )}
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  if (!isPhotoProcessed) {
-                    handleTakePhoto();
-                  }
-                }}
-                className={`items-center px-8 py-4 my-4 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"}`}
-                activeOpacity={0.7}
-                disabled={isPhotoProcessed || !isConnected}
-              >
-                {isPhotoProcessed ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Progress Bar and Message */}
-            {isUploading && (
-              <View className="mt-2 mb-6 ">
-                <Text className="text-center text-gray-600">{uploadMessage}</Text>
-                <View className="relative w-full h-4 mt-2 bg-gray-200 rounded-full">
-                  <View
-                    className="absolute top-0 left-0 h-4 bg-blue-500 rounded-full"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Close Modal Button */}
-            <TouchableOpacity
-              disabled={isUploading}
-              onPress={() => { setPhotoModalVisible(false); setIsUploading(false); setIsCompleting(false); }}
-              className={`items-center px-4 py-2 rounded-full ${isUploading ? "bg-gray-300" : "bg-gray-400"}`}
-              activeOpacity={0.7}
-            >
-              <Text className="text-lg font-bold text-white">
-                {isUploading ? "Sedang memproses..." : "Tutup"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Preview Modal */}
-      <Modal
-        visible={!!previewPhoto}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setPreviewPhoto(null)}
-      >
-        <View className="items-center justify-center flex-1 px-4 bg-black bg-opacity-75">
-          {previewPhoto && (
-            <View className="w-full max-w-md overflow-hidden bg-white shadow-xl rounded-xl">
-              <Image
-                source={{ uri: previewPhoto }}
-                style={{ width: "100%", height: 400 }}
-                resizeMode="cover"
-              />
-              <View className="flex-row items-center justify-between px-6 py-4 border-t border-gray-200">
-                <TouchableOpacity
-                  onPress={() => {
-                    const index = photos.findIndex((photo) => photo === previewPhoto);
-                    handleDeletePhoto(index);
-                    setPreviewPhoto(null);
-                  }}
-                  className="flex-row items-center px-4 py-2 text-red-500 bg-red-100 rounded-lg"
-                >
-                  <Ionicons name="trash" size={20} color="#e3342f" />
-                  <Text className="ml-2 font-semibold text-red-500">Hapus</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setPreviewPhoto(null)}
-                  className="flex-row items-center px-4 py-2 text-gray-600 bg-gray-100 rounded-lg"
-                >
-                  <Ionicons name="close" size={20} color="#6b7280" />
-                  <Text className="ml-2 font-semibold text-gray-600">Tutup</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-      </Modal>
-
       {/* Ticket Extras Detail Modal */}
       <Modal
         visible={ticketExtrasModalVisible}
@@ -1012,7 +747,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         transparent={true}
         onRequestClose={() => setTicketExtrasModalVisible(false)}
       >
-        <View className="items-center justify-center flex-1 bg-gray-900 bg-opacity-75">
+        <View className="items-center justify-center flex-1 px-4 bg-gray-900 bg-opacity-75">
           <View className="w-[350px] max-w-lg p-6 bg-white rounded-lg">
             <Text className="mb-2 text-xl font-bold text-center">Berita Acara</Text>
             <Text className="mb-4 text-sm text-center">Isilah formulir ini di bawah secara lengkap.</Text>
@@ -1025,7 +760,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">SN EDC</Text>
                     <TextInput
-                      value={formData.sn_edc || selectedTicket?.additional_info?.sn_edc}
+                      value={
+                        formData.sn_edc?.replace(
+                          /^(\d+)(?:,(\d+))?E\+(\d+)$/,
+                          (_: any, p1: any, p2: any, p3: any) => {
+                            const baseNum = p2 ? `${p1}.${p2}` : p1;
+                            const exponent = parseInt(p3, 10);
+                            const fullNum = parseFloat(baseNum) * Math.pow(10, exponent);
+                            return fullNum.toLocaleString('fullwide', { useGrouping: false });
+                          }
+                        ) || selectedTicket?.additional_info?.sn_edc?.replace(
+                          /^(\d+)(?:,(\d+))?E\+(\d+)$/,
+                          (_: any, p1: any, p2: any, p3: any) => {
+                            const baseNum = p2 ? `${p1}.${p2}` : p1;
+                            const exponent = parseInt(p3, 10);
+                            const fullNum = parseFloat(baseNum) * Math.pow(10, exponent);
+                            return fullNum.toLocaleString('fullwide', { useGrouping: false });
+                          }
+                        )
+                      }
                       onChangeText={(text) => handleInputChangeTicketExtras("sn_edc", text)}
                       // placeholder="SN EDC"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
@@ -1063,12 +816,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">SIM Card</Text>
                     <TextInput
-                      // value={formData.sim_card}
-                      value={selectedTicket?.additional_info?.sn_sim_card}
+                      value={
+                        selectedTicket?.additional_info?.sn_sim_card?.replace(
+                          /^(\d+)(?:,(\d+))?E\+(\d+)$/,
+                          (_: any, p1: any, p2: any, p3: any) => {
+                            const baseNum = p2 ? `${p1}.${p2}` : p1;
+                            const exponent = parseInt(p3, 10);
+                            const fullNum = parseFloat(baseNum) * Math.pow(10, exponent);
+                            return fullNum.toLocaleString('fullwide', { useGrouping: false });
+                          }
+                        )
+                      }
                       onChangeText={(text) => handleInputChangeTicketExtras("sim_card", text)}
                       // placeholder="SIM Card"
                       // className="p-2 mt-2 border border-gray-300 rounded-md"
-                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      className="p-2 mt-2 text-xs bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
                   </View>
@@ -1263,7 +1025,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={formData.com_line || selectedTicket?.additional_info?.connection_type}
                       onChangeText={(text) => handleInputChangeTicketExtras("com_line", text)}
                       // placeholder="Com Line"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
@@ -1335,23 +1099,30 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 <View className="flex-row flex-wrap gap-x-4 gap-y-4">
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Signal Bar</Text>
-                    <TextInput
-                      // value={formData.signal_bar}
-                      value={formData.signal_bar || selectedTicket?.additional_info?.signal_bar}
-                      onChangeText={(text) => handleInputChangeTicketExtras("signal_bar", text)}
-                      // placeholder="TID MTI"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
-                    />
+                    <Picker
+                      selectedValue={formData.signal_bar || selectedTicket?.additional_info?.signal_bar}
+                      onValueChange={(value) => handleInputChangeTicketExtras("signal_bar", value)}
+                      style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                    >
+                      <Picker.Item label="Signal Bar..." value="" />
+                      <Picker.Item label="1" value="1" />
+                      <Picker.Item label="2" value="2" />
+                      <Picker.Item label="3" value="3" />
+                      <Picker.Item label="4" value="4" />
+                    </Picker>
                   </View>
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Signal Type</Text>
-                    <TextInput
-                      // value={formData.signal_type}
-                      value={formData.signal_type || selectedTicket?.additional_info?.signal_type}
-                      onChangeText={(text) => handleInputChangeTicketExtras("signal_type", text)}
-                      // placeholder="Signal Type"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
-                    />
+                    <Picker
+                      selectedValue={formData.signal_type || selectedTicket?.additional_info?.signal_type}
+                      onValueChange={(value) => handleInputChangeTicketExtras("signal_type", value)}
+                      style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                    >
+                      <Picker.Item label="Signal Type..." value="" />
+                      <Picker.Item label="3G" value="3G" />
+                      <Picker.Item label="4G" value="4G" />
+                      <Picker.Item label="5G" value="5G" />
+                    </Picker>
                   </View>
                 </View>
 
@@ -1386,7 +1157,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     value={geofence.find((t) => t.external_id === selectedTicket?.geofence_id)?.description}
                     onChangeText={(text) => handleInputChangeTicketExtras("merchant_name", text)}
                     // placeholder="Nama Merchant/Agent"
-                    className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
+                    multiline
+                    numberOfLines={10}
+                    textAlignVertical="top"
+                    className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                     editable={false}
                   />
                 </View>
@@ -1455,10 +1229,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Kategori Member Bank</Text>
                     <TextInput
-                      value={formData.member_bank_category}
+                      value={formData.member_bank_category || selectedTicket?.additional_info?.edc_service}
                       onChangeText={(text) => handleInputChangeTicketExtras("member_bank_category", text)}
                       // placeholder="Kategori Member Bank"
-                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                      // className="p-2 mt-2 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
+                      editable={false}
                     />
                   </View>
                   <View className="flex-1 mb-4">
@@ -1468,8 +1244,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={formData.edc_priority || selectedTicket?.additional_info?.priority_edc}
                       onChangeText={(text) => handleInputChangeTicketExtras("edc_priority", text)}
                       // placeholder="Prioritas EDC"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
-                      className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
+                      className="p-2 mt-2 border border-gray-300 rounded-md"
+                    // className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
                     />
                   </View>
                 </View>
@@ -1496,23 +1272,93 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   </View>
                 </View>
                 <View className="mb-4">
-                  <Text className="text-sm text-gray-600">Manual Book</Text>
-                  <View className="flex-row mt-2 space-x-4">
-                    <View className="flex-row items-center">
-                      <RadioButton
-                        value="true"
-                        status={formData.manual_book ? "checked" : "unchecked"}
-                        onPress={() => handleInputChangeTicketExtras("manual_book", true)}
-                      />
-                      <Text className="text-sm text-gray-600">Ya</Text>
+                  <View className="flex-row flex-wrap gap-x-4 gap-y-4">
+                    <View className="flex-1 mb-4">
+                      <Text className="text-sm text-gray-600">Manual Book</Text>
+                      <View className="flex-row my-2 space-x-4">
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="true"
+                            status={formData.manual_book ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("manual_book", true)}
+                          />
+                          <Text className="text-sm text-gray-600">Ya</Text>
+                        </View>
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="false"
+                            status={!formData.manual_book ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("manual_book", false)}
+                          />
+                          <Text className="text-sm text-gray-600">Tidak</Text>
+                        </View>
+                      </View>
                     </View>
-                    <View className="flex-row items-center">
-                      <RadioButton
-                        value="false"
-                        status={!formData.manual_book ? "checked" : "unchecked"}
-                        onPress={() => handleInputChangeTicketExtras("manual_book", false)}
-                      />
-                      <Text className="text-sm text-gray-600">Tidak</Text>
+                    <View className="flex-1 mb-4">
+                      <Text className="text-sm text-gray-600">Kelayakan Merchant</Text>
+                      <View className="flex-col mt-2 space-x-4">
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="true"
+                            status={formData.merchant_eligibility ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("merchant_eligibility", true)}
+                          />
+                          <Text className="text-sm text-gray-600">Layak</Text>
+                        </View>
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="false"
+                            status={!formData.merchant_eligibility ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("merchant_eligibility", false)}
+                          />
+                          <Text className="text-sm text-gray-600">Tidak Layak</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View className="flex-row flex-wrap gap-x-4 gap-y-4">
+                    <View className="flex-1 mb-4">
+                      <Text className="text-sm text-gray-600">EDC Aktif Bertransaksi</Text>
+                      <View className="flex-row my-2 space-x-4">
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="true"
+                            status={formData.edc_active_trx ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("edc_active_trx", true)}
+                          />
+                          <Text className="text-sm text-gray-600">Ya</Text>
+                        </View>
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="false"
+                            status={!formData.edc_active_trx ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("edc_active_trx", false)}
+                          />
+                          <Text className="text-sm text-gray-600">Tidak</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View className="flex-1 mb-4">
+                      <Text className="text-sm text-gray-600">No Telepon TY dan No PIC Kawasan/TL</Text>
+                      <View className="flex-row mt-2 space-x-4">
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="true"
+                            status={formData.no_tel_ty_pic ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("no_tel_ty_pic", true)}
+                          />
+                          <Text className="text-sm text-gray-600">Ya</Text>
+                        </View>
+                        <View className="flex-row items-center">
+                          <RadioButton
+                            value="false"
+                            status={!formData.no_tel_ty_pic ? "checked" : "unchecked"}
+                            onPress={() => handleInputChangeTicketExtras("no_tel_ty_pic", false)}
+                          />
+                          <Text className="text-sm text-gray-600">Tidak</Text>
+                        </View>
+                      </View>
                     </View>
                   </View>
 
@@ -1630,42 +1476,320 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               </View>
 
-              {/* 6. Training Material */}
-              <View>
-                <Text className="mb-4 font-bold underline">6. Training Material</Text>
-                <View className="flex-row items-center">
+              {/* 6. Tanda EDC Rusak */}
+              <View className="mb-4 mr-4">
+                <Text className="mb-4 font-bold underline">6. Tanda-tanda EDC Rusak</Text>
+                <View className="flex-row items-center -mb-2">
                   <Checkbox
-                    status={formData.training_trx_qr ? 'checked' : 'unchecked'}
-                    onPress={() => handleInputChangeTicketExtras("training_trx_qr", !formData.training_trx_qr)}
+                    status={formData.kondisi_edc_baik ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("kondisi_edc_baik", !formData.kondisi_edc_baik)}
                   />
-                  <Text className="ml-2 text-sm text-gray-600">Tes TRX QR</Text>
+                  <Text className="ml-2 text-sm text-gray-600">Kondisi EDC baik</Text>
                 </View>
-                <View className="flex-row items-center">
+                <View className="flex-row items-center -mb-2">
                   <Checkbox
-                    status={formData.training_trx_prepaid ? 'checked' : 'unchecked'}
-                    onPress={() => handleInputChangeTicketExtras("training_trx_prepaid", !formData.training_trx_prepaid)}
+                    status={formData.masalah_baterai ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_baterai", !formData.masalah_baterai)}
                   />
-                  <Text className="ml-2 text-sm text-gray-600">Tes TRX Prepaid</Text>
+                  <Text className="ml-2 text-sm text-gray-600">Baterai drop</Text>
                 </View>
-                <View className="flex-row items-center">
+                <View className="flex-row items-center -mb-2">
                   <Checkbox
-                    status={formData.training_trx_credit ? 'checked' : 'unchecked'}
-                    onPress={() => handleInputChangeTicketExtras("training_trx_credit", !formData.training_trx_credit)}
+                    status={formData.masalah_layar ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_layar", !formData.masalah_layar)}
                   />
-                  <Text className="ml-2 text-sm text-gray-600">Tes TRX Credit</Text>
+                  <Text className="ml-2 text-sm text-gray-600">Layar EDC kedip-kedip/bergaris</Text>
                 </View>
-                <View className="flex-row items-center">
+                <View className="flex-row items-center -mb-2">
                   <Checkbox
-                    status={formData.training_trx_debit ? 'checked' : 'unchecked'}
-                    onPress={() => handleInputChangeTicketExtras("training_trx_debit", !formData.training_trx_debit)}
+                    status={formData.masalah_tombol ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_tombol", !formData.masalah_tombol)}
                   />
-                  <Text className="ml-2 text-sm text-gray-600">Tes TRX Debit</Text>
+                  <Text className="ml-2 text-sm text-gray-600">Tombol sudah lepas/keras/susah ditekan/tidak nampak angka</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.masalah_print ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_print", !formData.masalah_print)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Hasil print EDC kurang jelas</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_restart ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_restart", !formData.edc_restart)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">EDC sering restart</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.masalah_fisik ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_fisik", !formData.masalah_fisik)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Fisik tidak sempurna/rusak</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.masalah_port_charger ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_port_charger", !formData.masalah_port_charger)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Port charger EDC bermasalah (tidak ada aliran listrik masuk)</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.masalah_card_reader ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("masalah_card_reader", !formData.masalah_card_reader)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600 text-wrap">Card reader EDC tidak bisa membaca/sering gagal/no respon</Text>
                 </View>
               </View>
 
-              {/* 7. Remarks */}
+              {/* 7. Kondisi Merchant 3 bulan ke depan */}
+              <View className="mb-4">
+                <Text className="mb-4 font-bold underline">7. Kondisi Merchant 3 bulan ke depan</Text>
+                <View className="mb-4">
+                  <Text className="text-sm text-gray-600">Pilih 1 kondisi merchant</Text>
+                  <View className="flex-col mt-2 space-x-4">
+                    {/* Merchant Normal */}
+                    <View className="flex-row items-center">
+                      <RadioButton
+                        value="normal"
+                        status={formData.merchant_normal ? "checked" : "unchecked"}
+                        onPress={() => {
+                          handleInputChangeTicketExtras("merchant_normal", true);
+                          handleInputChangeTicketExtras("merchant_tutup_sementara", false);
+                          handleInputChangeTicketExtras("merchant_tutup_permanen", false);
+                          handleInputChangeTicketExtras("merchant_renovasi", false);
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi", false);
+                          // Reset semua tanggal
+                          handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
+                          handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
+                          handleInputChangeTicketExtras("merchant_renovasi_date", "");
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                        }}
+                      />
+                      <Text className="text-sm text-gray-600">Merchant beroperasi normal</Text>
+                    </View>
+
+                    {/* Tutup Sementara */}
+                    <View className="flex-row items-center">
+                      <RadioButton
+                        value="tutup_sementara"
+                        status={formData.merchant_tutup_sementara ? "checked" : "unchecked"}
+                        onPress={() => {
+                          handleInputChangeTicketExtras("merchant_normal", false);
+                          handleInputChangeTicketExtras("merchant_tutup_sementara", true);
+                          handleInputChangeTicketExtras("merchant_tutup_permanen", false);
+                          handleInputChangeTicketExtras("merchant_renovasi", false);
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi", false);
+                          // Reset tanggal lainnya
+                          handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
+                          handleInputChangeTicketExtras("merchant_renovasi_date", "");
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                        }}
+                      />
+                      <Text className="text-sm text-gray-600">Merchant akan tutup sementara</Text>
+                    </View>
+                    {formData.merchant_tutup_sementara && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
+                        <TouchableOpacity
+                          onPress={() => handleShowDatePicker('merchant_tutup_sementara_date')}
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                        >
+                          <Text>{formatDateForDisplay(formData.merchant_tutup_sementara_date)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Tutup Permanen */}
+                    <View className="flex-row items-center">
+                      <RadioButton
+                        value="tutup_permanen"
+                        status={formData.merchant_tutup_permanen ? "checked" : "unchecked"}
+                        onPress={() => {
+                          handleInputChangeTicketExtras("merchant_normal", false);
+                          handleInputChangeTicketExtras("merchant_tutup_sementara", false);
+                          handleInputChangeTicketExtras("merchant_tutup_permanen", true);
+                          handleInputChangeTicketExtras("merchant_renovasi", false);
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi", false);
+                          // Reset tanggal lainnya
+                          handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
+                          handleInputChangeTicketExtras("merchant_renovasi_date", "");
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                        }}
+                      />
+                      <Text className="text-sm text-gray-600">Merchant akan tutup permanen</Text>
+                    </View>
+                    {formData.merchant_tutup_permanen && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
+                        <TouchableOpacity
+                          onPress={() => handleShowDatePicker('merchant_tutup_permanen_date')}
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                        >
+                          <Text>{formatDateForDisplay(formData.merchant_tutup_permanen_date)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Renovasi */}
+                    <View className="flex-row items-center">
+                      <RadioButton
+                        value="renovasi"
+                        status={formData.merchant_renovasi ? "checked" : "unchecked"}
+                        onPress={() => {
+                          handleInputChangeTicketExtras("merchant_normal", false);
+                          handleInputChangeTicketExtras("merchant_tutup_sementara", false);
+                          handleInputChangeTicketExtras("merchant_tutup_permanen", false);
+                          handleInputChangeTicketExtras("merchant_renovasi", true);
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi", false);
+                          // Reset tanggal lainnya
+                          handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
+                          handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                        }}
+                      />
+                      <Text className="text-sm text-gray-600">Merchant akan renovasi</Text>
+                    </View>
+                    {formData.merchant_renovasi && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
+                        <TouchableOpacity
+                          onPress={() => handleShowDatePicker('merchant_renovasi_date')}
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                        >
+                          <Text>{formatDateForDisplay(formData.merchant_renovasi_date)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Pindah Lokasi */}
+                    <View className="flex-row items-center">
+                      <RadioButton
+                        value="pindah_lokasi"
+                        status={formData.merchant_pindah_lokasi ? "checked" : "unchecked"}
+                        onPress={() => {
+                          handleInputChangeTicketExtras("merchant_normal", false);
+                          handleInputChangeTicketExtras("merchant_tutup_sementara", false);
+                          handleInputChangeTicketExtras("merchant_tutup_permanen", false);
+                          handleInputChangeTicketExtras("merchant_renovasi", false);
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi", true);
+                          // Reset tanggal lainnya
+                          handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
+                          handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
+                          handleInputChangeTicketExtras("merchant_renovasi_date", "");
+                        }}
+                      />
+                      <Text className="text-sm text-gray-600">Merchant akan pindah lokasi</Text>
+                    </View>
+                    {formData.merchant_pindah_lokasi && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
+                        <TouchableOpacity
+                          onPress={() => handleShowDatePicker('merchant_pindah_lokasi_date')}
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                        >
+                          <Text>{formatDateForDisplay(formData.merchant_pindah_lokasi_date)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              {/* 8. Training Material */}
               <View>
-                <Text className="mt-2 mb-4 font-bold underline">7. Remarks</Text>
+                <Text className="mb-4 font-bold underline">8. Training Material</Text>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.sale_void_settlement_logon ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("sale_void_settlement_logon", !formData.sale_void_settlement_logon)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Sale/void/settlement/logon</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.installment ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("installment", !formData.installment)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Installment</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.audit_report ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("audit_report", !formData.audit_report)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Audit report</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.top_up ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("top_up", !formData.top_up)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Top up</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.redeem_point ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("redeem_point", !formData.redeem_point)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Redeem point</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.cardver_preauth_offline ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("cardver_preauth_offline", !formData.cardver_preauth_offline)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Cardver/pre auth/offline</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.manual_key_in ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("manual_key_in", !formData.manual_key_in)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Manual key in</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.mini_atm ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("mini_atm", !formData.mini_atm)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Mini ATM</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.fare_nonfare ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("fare_nonfare", !formData.fare_nonfare)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Fare & non fare</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.dsc_download_bin ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("dsc_download_bin", !formData.dsc_download_bin)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">DSC/download BIN</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.first_level_maintenance ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("first_level_maintenance", !formData.first_level_maintenance)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">First level maintenance</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.penyimpanan_struk_trx ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("penyimpanan_struk_trx", !formData.penyimpanan_struk_trx)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Penyimpanan struk transaksi</Text>
+                </View>
+              </View>
+
+              {/* 9. Remarks */}
+              <View>
+                <Text className="mt-2 mb-4 font-bold underline">9. Remarks</Text>
                 <View className="flex-row flex-wrap gap-x-4 gap-y-4">
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Remarks / Notes (case_remaks)</Text>
@@ -1696,17 +1820,29 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             </ScrollView>
 
-            {/* Close Modal Button */}
-            {/* <TouchableOpacity
-              onPress={() => setTicketExtrasModalVisible(false)}
-              className={`items-center px-4 py-2 rounded-full ${isSubmittingTicketExtras ? "bg-gray-300" : "bg-gray-400"}`}
-              activeOpacity={0.7}
-              disabled
-            >
-              <Text className="text-lg font-bold text-white">
-                {isSubmittingTicketExtras ? "Sedang memproses..." : "Tutup"}
-              </Text>
-            </TouchableOpacity> */}
+            {/* Date Picker */}
+            {showDatePicker && (
+              <DateTimePicker
+                value={(() => {
+                  try {
+                    const dateValue = formData[currentDateField as keyof typeof formData] as string;
+                    if (dateValue && dateValue.trim() !== '') {
+                      const date = new Date(dateValue);
+                      // Check if date is valid
+                      return isNaN(date.getTime()) ? new Date() : date;
+                    }
+                    return new Date();
+                  } catch (e) {
+                    return new Date();
+                  }
+                })()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                minimumDate={new Date()} /* Only allow future dates */
+                testID="datePicker"
+              />
+            )}
           </View>
         </View>
       </Modal >
@@ -1800,20 +1936,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             <Text className="mb-4 text-xl text-center">{formatTime(time)}</Text>
           )}
 
-          {/* <View className="z-20 flex-row items-center justify-center w-full gap-x-2">
-            <TouchableOpacity
+          {/* <View className="z-20 flex-row items-center justify-center w-full gap-x-2"> */}
+          {/* <TouchableOpacity
               onPress={() => setPhotoModalVisible(true)}
               className="p-1 bg-red-500 rounded-full top-2 right-2"
             >
               <Text className="text-white">Debug photo modal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </TouchableOpacity> */}
+          {/* <TouchableOpacity
               onPress={() => setTicketExtrasModalVisible(true)}
               className="p-1 bg-blue-500 rounded-full top-2 right-2"
             >
               <Text className="text-white">Debug berita acara modal</Text>
-            </TouchableOpacity>
-          </View> */}
+            </TouchableOpacity> */}
+          {/* </View> */}
 
           {/* Idle */}
           {!tracking ? (
@@ -1948,6 +2084,36 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </Modal>
       )}
+
+      {/* Multi-Phase Photo Capture Component */}
+      <MultiPhasePhotoCapture
+        visible={multiPhasePhotoModalVisible}
+        onClose={() => {
+          setMultiPhasePhotoModalVisible(false);
+          setIsCompleting(false);
+        }}
+        onComplete={async () => {
+          try {
+            // Call stopBackgroundTracking to properly update ticket status
+            if (selectedTicket?.ticket_id) {
+              await stopBackgroundTracking(selectedTicket.ticket_id);
+              handleLog(`Background tracking stopped for ticket: ${selectedTicket.ticket_id}`);
+            }
+            setMultiPhasePhotoModalVisible(false);
+            setTicketExtrasModalVisible(true); // After completing all phases, show ticket extras form
+          } catch (error) {
+            handleError(`Error in MultiPhasePhotoCapture completion: ${error}`);
+            // Still continue to the form even if there's an error stopping tracking
+            setMultiPhasePhotoModalVisible(false);
+            setTicketExtrasModalVisible(true);
+          }
+        }}
+        ticketId={currentTicketID || selectedTicket?.ticket_id || ""}
+        userId={userData?.user_id || ""}
+        isConnected={isConnected || false}
+        timestamp={timestamp || ""}
+        currentLocation={currentLocation}
+      />
     </ScrollView >
   );
 };

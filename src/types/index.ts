@@ -76,4 +76,5 @@ export interface QueueItem {
   attempts?: number;
   timestamp: any;
   location: any;
+  photoStartIndex?: number; // Add optional photoStartIndex property to track starting index for multi-phase uploads
 };

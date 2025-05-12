@@ -76,7 +76,7 @@ export const updateTicket = async (ticket_id: string, trip_id: string, status: s
 export const updateTicketExtras = async (ticket_id: string, extrasData: any): Promise<void> => {
   try {
     // const token = await AsyncStorage.getItem("session");
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/tickets/extras`, {
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/tickets/new-extras`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
