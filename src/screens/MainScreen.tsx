@@ -651,8 +651,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return lookup;
   }, [geofence]);
   const handleShowDatePicker = (fieldName: string) => {
+    const currentValue = formData[fieldName as keyof typeof formData] as string;
+    if (!currentValue || currentValue.trim() === '') {
+      const defaultDate = new Date();
+      defaultDate.setDate(defaultDate.getDate() + 0);
+      const defaultFutureDate = defaultDate.toISOString();
+      console.log(`Setting default future date for ${fieldName}: ${defaultFutureDate}`);
+      handleInputChangeTicketExtras(fieldName, defaultFutureDate);
+    }
     setCurrentDateField(fieldName);
-    setShowDatePicker(true);
+    setTimeout(() => {
+      setShowDatePicker(true);
+    }, 100);
   };
 
   // Format date for display
@@ -666,13 +676,22 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       return "YYYY-MM-DD";
     }
   };
+
   const handleDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
     if (selectedDate) {
+      const fieldToUpdate = currentDateField;
       const formattedDate = selectedDate.toISOString(); // timestampz
-      handleInputChangeTicketExtras(currentDateField, formattedDate);
+      setTimeout(() => {
+        handleInputChangeTicketExtras(fieldToUpdate, formattedDate);
+      }, 100);
+    }
+    if (Platform.OS === 'ios') {
+      setTimeout(() => {
+        setShowDatePicker(false);
+      }, 200);
     }
   };
 
@@ -1586,6 +1605,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
                           handleInputChangeTicketExtras("merchant_renovasi_date", "");
                           handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                          const defaultDate = new Date();
+                          defaultDate.setDate(defaultDate.getDate() + 0);
+                          handleInputChangeTicketExtras("merchant_tutup_sementara_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan tutup sementara</Text>
@@ -1597,8 +1619,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           onPress={() => handleShowDatePicker('merchant_tutup_sementara_date')}
                           className="p-2 mt-2 border border-gray-300 rounded-md"
                         >
-                          <Text>{formatDateForDisplay(formData.merchant_tutup_sementara_date)}</Text>
+                          <Text>{formatDateForDisplay(formData.merchant_tutup_sementara_date) || "Pilih tanggal"}</Text>
                         </TouchableOpacity>
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Tap untuk memilih tanggal
+                        </Text>
                       </View>
                     )}
 
@@ -1617,6 +1642,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
                           handleInputChangeTicketExtras("merchant_renovasi_date", "");
                           handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                          const defaultDate = new Date();
+                          defaultDate.setDate(defaultDate.getDate() + 30); // 1 month for permanent closure
+                          handleInputChangeTicketExtras("merchant_tutup_permanen_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan tutup permanen</Text>
@@ -1628,8 +1656,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           onPress={() => handleShowDatePicker('merchant_tutup_permanen_date')}
                           className="p-2 mt-2 border border-gray-300 rounded-md"
                         >
-                          <Text>{formatDateForDisplay(formData.merchant_tutup_permanen_date)}</Text>
+                          <Text>{formatDateForDisplay(formData.merchant_tutup_permanen_date) || "Pilih tanggal"}</Text>
                         </TouchableOpacity>
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Tap untuk memilih tanggal
+                        </Text>
                       </View>
                     )}
 
@@ -1648,6 +1679,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
                           handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
                           handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
+                          const defaultDate = new Date();
+                          defaultDate.setDate(defaultDate.getDate() + 14); // 2 weeks for renovation
+                          handleInputChangeTicketExtras("merchant_renovasi_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan renovasi</Text>
@@ -1659,8 +1693,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           onPress={() => handleShowDatePicker('merchant_renovasi_date')}
                           className="p-2 mt-2 border border-gray-300 rounded-md"
                         >
-                          <Text>{formatDateForDisplay(formData.merchant_renovasi_date)}</Text>
+                          <Text>{formatDateForDisplay(formData.merchant_renovasi_date) || "Pilih tanggal"}</Text>
                         </TouchableOpacity>
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Tap untuk memilih tanggal
+                        </Text>
                       </View>
                     )}
 
@@ -1679,6 +1716,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
                           handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
                           handleInputChangeTicketExtras("merchant_renovasi_date", "");
+                          const defaultDate = new Date();
+                          defaultDate.setDate(defaultDate.getDate() + 21); // 3 weeks for location change
+                          handleInputChangeTicketExtras("merchant_pindah_lokasi_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan pindah lokasi</Text>
@@ -1690,8 +1730,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           onPress={() => handleShowDatePicker('merchant_pindah_lokasi_date')}
                           className="p-2 mt-2 border border-gray-300 rounded-md"
                         >
-                          <Text>{formatDateForDisplay(formData.merchant_pindah_lokasi_date)}</Text>
+                          <Text>{formatDateForDisplay(formData.merchant_pindah_lokasi_date) || "Pilih tanggal"}</Text>
                         </TouchableOpacity>
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Tap untuk memilih tanggal
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -1819,7 +1862,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 )}
               </TouchableOpacity>
             </ScrollView>
-
             {/* Date Picker */}
             {showDatePicker && (
               <DateTimePicker
@@ -1829,11 +1871,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     if (dateValue && dateValue.trim() !== '') {
                       const date = new Date(dateValue);
                       // Check if date is valid
-                      return isNaN(date.getTime()) ? new Date() : date;
+                      if (!isNaN(date.getTime())) {
+                        console.log(`Using existing date: ${date.toISOString()}`);
+                        return date;
+                      }
                     }
-                    return new Date();
+                    const defaultDate = new Date();
+                    defaultDate.setDate(defaultDate.getDate() + 0);
+                    return defaultDate;
                   } catch (e) {
-                    return new Date();
+                    const defaultDate = new Date();
+                    defaultDate.setDate(defaultDate.getDate() + 0);
+                    return defaultDate;
                   }
                 })()}
                 mode="date"
@@ -1944,12 +1993,24 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               <Text className="text-white">Debug photo modal</Text>
             </TouchableOpacity> */}
           {/* <TouchableOpacity
-              onPress={() => setTicketExtrasModalVisible(true)}
+              onPress={() => {
+                const defaultDate = new Date();
+                defaultDate.setDate(defaultDate.getDate() + 0);
+                const defaultFutureDate = defaultDate.toISOString();
+                setFormData(prevState => ({
+                  ...prevState,
+                  merchant_tutup_sementara_date: defaultFutureDate,
+                  merchant_tutup_permanen_date: defaultFutureDate,
+                  merchant_renovasi_date: defaultFutureDate,
+                  merchant_pindah_lokasi_date: defaultFutureDate
+                }));
+                setTicketExtrasModalVisible(true);
+              }}
               className="p-1 bg-blue-500 rounded-full top-2 right-2"
             >
               <Text className="text-white">Debug berita acara modal</Text>
-            </TouchableOpacity> */}
-          {/* </View> */}
+            </TouchableOpacity>
+          </View> */}
 
           {/* Idle */}
           {!tracking ? (
@@ -2099,6 +2160,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               await stopBackgroundTracking(selectedTicket.ticket_id);
               handleLog(`Background tracking stopped for ticket: ${selectedTicket.ticket_id}`);
             }
+            const oneWeekFromNow = new Date();
+            oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 0);
+            const defaultFutureDate = oneWeekFromNow.toISOString();
+            setFormData(prevData => ({
+              ...prevData,
+              merchant_tutup_sementara_date: prevData.merchant_tutup_sementara ? prevData.merchant_tutup_sementara_date || defaultFutureDate : '',
+              merchant_tutup_permanen_date: prevData.merchant_tutup_permanen ? prevData.merchant_tutup_permanen_date || defaultFutureDate : '',
+              merchant_renovasi_date: prevData.merchant_renovasi ? prevData.merchant_renovasi_date || defaultFutureDate : '',
+              merchant_pindah_lokasi_date: prevData.merchant_pindah_lokasi ? prevData.merchant_pindah_lokasi_date || defaultFutureDate : ''
+            }));
             setMultiPhasePhotoModalVisible(false);
             setTicketExtrasModalVisible(true); // After completing all phases, show ticket extras form
           } catch (error) {
