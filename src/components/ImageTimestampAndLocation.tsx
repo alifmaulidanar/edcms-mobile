@@ -1,8 +1,29 @@
+import { LocationCache } from '../types';
 import { requestForegroundPermissionsAsync } from 'expo-location';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Skia, FontStyle, PaintStyle } from '@shopify/react-native-skia';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { readAsStringAsync, writeAsStringAsync, documentDirectory, EncodingType } from 'expo-file-system';
+
+/**
+ * Location Caching System
+ * 
+ * This implementation reduces the number of API calls to Nominatim for reverse geocoding
+ * by caching location data in memory. The location cache is used as follows:
+ * 
+ * - When a photo is taken, the system first checks if there's valid cached location data
+ * - If valid data exists in cache, it's used directly without making an API call
+ * - If no cache or expired cache, the system makes an API call and stores the result in cache
+ * - Cache expires after 30 minutes
+ * 
+ * To clear the cache manually (e.g., when a ticket is submitted or canceled), call clearLocationCache()
+ */
+
+// Cache expiration time in milliseconds (30 minutes)
+const CACHE_EXPIRATION = 30 * 60 * 1000;
+
+// Global location cache
+let locationCache: LocationCache | null = null;
 
 // Base64
 const loadImageAsBase64 = async (uri: string) => {
@@ -19,8 +40,42 @@ const loadImageAsBase64 = async (uri: string) => {
   }
 };
 
-export const getUserLocationInfo = async (location: any) => {
+// Cache management functions
+export const getLocationCache = () => {
+  if (!locationCache) return null;
+  const now = Date.now();
+  if (now - locationCache.timestamp > CACHE_EXPIRATION) {
+    handleLog('Cache lokasi telah kedaluwarsa');
+    locationCache = null;
+    return null;
+  }
+  return locationCache.data;
+};
+
+export const setLocationCache = (locationData: any) => {
+  if (!locationData) return;
+  locationCache = {
+    timestamp: Date.now(),
+    data: locationData
+  };
+  handleLog('Cache lokasi berhasil diperbarui');
+};
+
+export const clearLocationCache = () => {
+  locationCache = null;
+  handleLog('Cache lokasi telah dihapus');
+};
+
+export const getUserLocationInfo = async (location: any, forceRefresh: boolean = false) => {
   try {
+    if (!forceRefresh) {
+      const cachedLocation = getLocationCache();
+      if (cachedLocation) {
+        handleLog('Menggunakan data lokasi dari cache');
+        return cachedLocation;
+      }
+    }
+
     handleLog('Mendapatkan informasi lokasi pengguna...');
     const { status } = await requestForegroundPermissionsAsync();
     if (status !== 'granted') {
@@ -43,7 +98,7 @@ export const getUserLocationInfo = async (location: any) => {
       handleError('Alamat tidak ditemukan dalam hasil data');
       return null;
     }
-    return {
+    const locationData = {
       latitude,
       longitude,
       jalan: address.road || '-',
@@ -53,17 +108,29 @@ export const getUserLocationInfo = async (location: any) => {
       provinsi: address.region || '-',
       kode_pos: address.postcode || '-',
       negara: address.country || '-',
-    }
+    };
+
+    // Store in cache
+    setLocationCache(locationData);
+    return locationData;
   } catch (error) {
     handleError(`Gagal mendapatkan lokasi: ${error}`);
     return null;
   }
 };
 
-const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5000) => {
+const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5000, forceRefresh = false) => {
+  // Check cache first if not forcing a refresh
+  if (!forceRefresh) {
+    const cachedLocation = getLocationCache();
+    if (cachedLocation) {
+      handleLog('Menggunakan data lokasi dari cache');
+      return cachedLocation;
+    }
+  }
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const userInfo = await getUserLocationInfo(location);
+      const userInfo = await getUserLocationInfo(location, forceRefresh);
       if (userInfo) return userInfo;
     } catch (error) {
       handleError(`Gagal mendapatkan lokasi (Percobaan ${attempt}): ${error}`);
@@ -76,9 +143,9 @@ const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5
 };
 
 // Timestamp and Location
-export const addTimestampToPhoto = async (photoUri: string, fileName: string, timestamp: any, location: any) => {
+export const addTimestampToPhoto = async (photoUri: string, fileName: string, timestamp: any, location: any, forceRefresh: boolean = false) => {
   try {
-    let userInfo = await getUserLocationWithRetry(location);
+    let userInfo = await getUserLocationWithRetry(location, 3, 5000, forceRefresh);
     if (!userInfo) {
       handleError('Tidak bisa mendapatkan lokasi, menunda proses.');
       return null;

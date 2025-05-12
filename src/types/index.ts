@@ -78,3 +78,19 @@ export interface QueueItem {
   location: any;
   photoStartIndex?: number; // Add optional photoStartIndex property to track starting index for multi-phase uploads
 };
+
+// Location cache to prevent redundant API calls
+export interface LocationCache {
+  timestamp: number;
+  data: {
+    latitude: number;
+    longitude: number;
+    jalan: string;
+    kelurahan: string;
+    kecamatan: string;
+    kota: string;
+    provinsi: string;
+    kode_pos: string;
+    negara: string;
+  } | null;
+}

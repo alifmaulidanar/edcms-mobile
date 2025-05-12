@@ -10,17 +10,16 @@ import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
 import { requestPermissionsAsync } from 'expo-media-library';
 import { startUploadService } from "../utils/backgroundUploader";
+// import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
 import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
+import { clearLocationCache } from "../components/ImageTimestampAndLocation";
 import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, Platform } from "react-native";
-import DateTimePicker from '@react-native-community/datetimepicker';
-
-// const ticketExtrasFlag = process.env.EXPO_PUBLIC_FEATURE_FLAG_ENABLE_TICKET_EXTRAS;
 
 type RootStackParamList = {
   Login: undefined;
@@ -49,9 +48,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [isSubmittingTicketExtras, setIsSubmittingTicketExtras] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
-  const [currentDateField, setCurrentDateField] = useState<string>('');
-  // const [ticketExtrasFlag, setTicketExtrasFlag] = useState<string>("true"); // Default to show ticket extras
+  // const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  // const [currentDateField, setCurrentDateField] = useState<string>('');
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
@@ -194,6 +192,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       }
       const location = await getCurrentPositionAsync({});
       setTimestamp(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss"));
+      clearLocationCache();
       setCurrentLocation(location);
       setMultiPhasePhotoModalVisible(true);
     } catch (error) {
@@ -214,6 +213,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         setSelectedTicket(null);
         setTime(0);
         handleLog('Trip canceled');
+        clearLocationCache();
         onRefresh();
       }
     } catch (error: any) {
@@ -494,19 +494,40 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const handleSubmitTicketExtras = async () => {
     setIsSubmittingTicketExtras(true);
     try {
+      // Convert date strings from dd-mm-yyyy to ISO format with Jakarta timezone (GMT+7)
+      const convertDateToISOWithJakartaTZ = (dateStr: string) => {
+        if (!dateStr || dateStr.trim() === '') return '';
+        const dateParts = dateStr.split('-');
+        if (dateParts.length !== 3) return '';
+        const day = parseInt(dateParts[0], 10);
+        const month = parseInt(dateParts[1], 10) - 1;
+        const year = parseInt(dateParts[2], 10);
+        return moment.tz(`${year}-${month + 1}-${day}`, 'YYYY-MM-DD', 'Asia/Jakarta').toISOString();
+      };
+
       const processedData = {
         ...formData,
         merchant_location: formData.merchant_location ? formData.merchant_location.split(", ").map(Number) : [],
-        started_on: selectedTicket?.updated_at ? new Date(selectedTicket.updated_at).toISOString() : new Date().toISOString()
+        started_on: selectedTicket?.updated_at ? new Date(selectedTicket.updated_at).toISOString() : new Date().toISOString(),
+        merchant_tutup_sementara_date: formData.merchant_tutup_sementara && formData.merchant_tutup_sementara_date ?
+          convertDateToISOWithJakartaTZ(formData.merchant_tutup_sementara_date) : '',
+        merchant_tutup_permanen_date: formData.merchant_tutup_permanen && formData.merchant_tutup_permanen_date ?
+          convertDateToISOWithJakartaTZ(formData.merchant_tutup_permanen_date) : '',
+        merchant_renovasi_date: formData.merchant_renovasi && formData.merchant_renovasi_date ?
+          convertDateToISOWithJakartaTZ(formData.merchant_renovasi_date) : '',
+        merchant_pindah_lokasi_date: formData.merchant_pindah_lokasi && formData.merchant_pindah_lokasi_date ?
+          convertDateToISOWithJakartaTZ(formData.merchant_pindah_lokasi_date) : ''
       }
 
       await updateTicketExtras(selectedTicket?.ticket_id || "", processedData);
+      clearLocationCache();
 
       setTimeout(() => {
+        // jangan ditukar
         setIsSubmittingTicketExtras(false);
         setTicketExtrasModalVisible(false);
         alert("Data berhasil disimpan! Tiket telah ditandai selesai.");
-      }, 2000);
+      }, 1000);
       // Reset states
       setTracking(false);
       setTime(0);
@@ -650,50 +671,37 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     });
     return lookup;
   }, [geofence]);
-  const handleShowDatePicker = (fieldName: string) => {
-    const currentValue = formData[fieldName as keyof typeof formData] as string;
-    if (!currentValue || currentValue.trim() === '') {
-      const defaultDate = new Date();
-      defaultDate.setDate(defaultDate.getDate() + 0);
-      const defaultFutureDate = defaultDate.toISOString();
-      console.log(`Setting default future date for ${fieldName}: ${defaultFutureDate}`);
-      handleInputChangeTicketExtras(fieldName, defaultFutureDate);
-    }
-    setCurrentDateField(fieldName);
-    setTimeout(() => {
-      setShowDatePicker(true);
-    }, 100);
-  };
+  // const handleShowDatePicker = (fieldName: string) => {
+  //   setCurrentDateField(fieldName);
+  //   setShowDatePicker(true);
+  // };
 
-  // Format date for display
-  const formatDateForDisplay = (isoString: string | undefined): string => {
-    if (!isoString) return "YYYY-MM-DD";
-    try {
-      return moment(isoString)
-        .tz("Asia/Jakarta")
-        .format("DD MMM YYYY");
-    } catch (error) {
-      return "YYYY-MM-DD";
-    }
-  };
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    if (selectedDate) {
-      const fieldToUpdate = currentDateField;
-      const formattedDate = selectedDate.toISOString(); // timestampz
-      setTimeout(() => {
-        handleInputChangeTicketExtras(fieldToUpdate, formattedDate);
-      }, 100);
-    }
-    if (Platform.OS === 'ios') {
-      setTimeout(() => {
-        setShowDatePicker(false);
-      }, 200);
-    }
-  };
+  // // Format date for display
+  // const formatDateForDisplay = (isoString: string | undefined): string => {
+  //   if (!isoString) return "YYYY-MM-DD";
+  //   try {
+  //     return moment(isoString)
+  //       .tz("Asia/Jakarta")
+  //       .format("DD MMM YYYY");
+  //   } catch (error) {
+  //     return "YYYY-MM-DD";
+  //   }
+  // };
+  // const handleDateChange = (event: any, selectedDate?: Date) => {
+  //   if (Platform.OS === 'android') {
+  //     setShowDatePicker(false);
+  //   }
+  //   if (selectedDate) {
+  //     const fieldToUpdate = currentDateField;
+  //     const formattedDate = selectedDate.toISOString();
+  //     handleInputChangeTicketExtras(fieldToUpdate, formattedDate);
+  //   }
+  //   if (Platform.OS === 'ios') {
+  //     setTimeout(() => {
+  //       setShowDatePicker(false);
+  //     }, 200);
+  //   }
+  // };
 
   return (
     <ScrollView
@@ -769,7 +777,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         <View className="items-center justify-center flex-1 px-4 bg-gray-900 bg-opacity-75">
           <View className="w-[350px] max-w-lg p-6 bg-white rounded-lg">
             <Text className="mb-2 text-xl font-bold text-center">Berita Acara</Text>
-            <Text className="mb-4 text-sm text-center">Isilah formulir ini di bawah secara lengkap.</Text>
+            <Text className="mb-4 text-sm text-center">Isilah formulir di bawah ini secara lengkap.</Text>
 
             <ScrollView style={{ maxHeight: 600 }} showsVerticalScrollIndicator={true} fadingEdgeLength={200} alwaysBounceVertical={true} bounces={true} persistentScrollbar={true}>
               {/* 1. EDC Detail */}
@@ -801,7 +809,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       onChangeText={(text) => handleInputChangeTicketExtras("sn_edc", text)}
                       // placeholder="SN EDC"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
-                    // className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                     />
                   </View>
                 </View>
@@ -809,11 +816,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">MID MTI</Text>
                     <TextInput
-                      // value={formData.mid_mti}
                       value={selectedTicket?.additional_info?.mid}
                       onChangeText={(text) => handleInputChangeTicketExtras("mid_mti", text)}
                       // placeholder="MID MTI"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -821,11 +826,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">TID MTI</Text>
                     <TextInput
-                      // value={formData.tid_mti}
                       value={selectedTicket?.additional_info?.tid}
                       onChangeText={(text) => handleInputChangeTicketExtras("tid_mti", text)}
                       // placeholder="TID MTI"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -848,7 +851,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       }
                       onChangeText={(text) => handleInputChangeTicketExtras("sim_card", text)}
                       // placeholder="SIM Card"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 text-xs bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -856,11 +858,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">SAM Card</Text>
                     <TextInput
-                      // value={formData.sam_card}
                       value={selectedTicket?.additional_info?.sn_sam_card}
                       onChangeText={(text) => handleInputChangeTicketExtras("sam_card", text)}
                       // placeholder="SAM Card"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -999,7 +999,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={selectedTicket?.additional_info?.mid}
                       onChangeText={(text) => handleInputChangeTicketExtras("mid_mti", text)}
                       // placeholder="MID MTI"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -1018,11 +1017,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">TID MTI</Text>
                     <TextInput
-                      // value={formData.tid_mti}
                       value={selectedTicket?.additional_info?.tid}
                       onChangeText={(text) => handleInputChangeTicketExtras("tid_mti", text)}
                       // placeholder="TID MTI"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -1044,7 +1041,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={formData.com_line || selectedTicket?.additional_info?.connection_type}
                       onChangeText={(text) => handleInputChangeTicketExtras("com_line", text)}
                       // placeholder="Com Line"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md text-wrap"
                       editable={false}
                     />
@@ -1225,7 +1221,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Nama PIC</Text>
                     <TextInput
-                      // value={formData.pic_name}
                       value={formData.pic_name || selectedTicket?.additional_info?.contact_person_merchant}
                       onChangeText={(text) => handleInputChangeTicketExtras("pic_name", text)}
                       // placeholder="Nama PIC"
@@ -1235,7 +1230,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">No. Telepon PIC</Text>
                     <TextInput
-                      // value={formData.pic_phone}
                       value={formData.pic_phone || selectedTicket?.additional_info?.phone_merchant}
                       onChangeText={(text) => handleInputChangeTicketExtras("pic_phone", text)}
                       // placeholder="No. Telepon PIC"
@@ -1251,7 +1245,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       value={formData.member_bank_category || selectedTicket?.additional_info?.edc_service}
                       onChangeText={(text) => handleInputChangeTicketExtras("member_bank_category", text)}
                       // placeholder="Kategori Member Bank"
-                      // className="p-2 mt-2 border border-gray-300 rounded-md"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
                       editable={false}
                     />
@@ -1264,7 +1257,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       onChangeText={(text) => handleInputChangeTicketExtras("edc_priority", text)}
                       // placeholder="Prioritas EDC"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
-                    // className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
                     />
                   </View>
                 </View>
@@ -1415,7 +1407,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       <View className="flex-1 mb-4">
                         <Text className="text-sm text-gray-600">Komentar Merchant</Text>
                         <TextInput
-                          // value={formData.merchant_comment}
                           value={formData.merchant_comment || selectedTicket?.additional_info?.merchant_comment}
                           onChangeText={(text) => handleInputChangeTicketExtras("merchant_comment", text)}
                           // placeholder="Komentar Merchant"
@@ -1437,7 +1428,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">EDC yang sering digunakan</Text>
                     <TextInput
-                      // value={formData.usual_edc}
                       value={formData.usual_edc || selectedTicket?.additional_info?.edc_yang_sering_digunakan}
                       onChangeText={(text) => handleInputChangeTicketExtras("usual_edc", text)}
                       // placeholder="EDC yang sering digunakan"
@@ -1452,7 +1442,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">EDC Lainnya</Text>
                     <TextInput
-                      // value={formData.other_edc}
                       value={formData.other_edc || selectedTicket?.additional_info?.edc_bank_lainnya}
                       onChangeText={(text) => handleInputChangeTicketExtras("other_edc", text)}
                       // placeholder="EDC Lainnya"
@@ -1467,7 +1456,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Permintaan Merchant (Request)</Text>
                     <TextInput
-                      // value={formData.merchant_request}
                       value={formData.merchant_request || selectedTicket?.additional_info?.merchant_request}
                       onChangeText={(text) => handleInputChangeTicketExtras("merchant_request", text)}
                       // placeholder="Permintaan Merchant (Request)"
@@ -1482,7 +1470,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Promo Material</Text>
                     <TextInput
-                      // value={formData.promo_material}
                       value={formData.promo_material || selectedTicket?.additional_info?.promo_matrial_}
                       onChangeText={(text) => handleInputChangeTicketExtras("promo_material", text)}
                       // placeholder="Promo Material"
@@ -1605,14 +1592,34 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
                           handleInputChangeTicketExtras("merchant_renovasi_date", "");
                           handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
-                          const defaultDate = new Date();
-                          defaultDate.setDate(defaultDate.getDate() + 0);
-                          handleInputChangeTicketExtras("merchant_tutup_sementara_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan tutup sementara</Text>
                     </View>
                     {formData.merchant_tutup_sementara && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Ketik Tanggal (format: dd-mm-yyyy)</Text>
+                        <TextInput
+                          value={formData.merchant_tutup_sementara_date || ""}
+                          onChangeText={(text) => {
+                            const validInput = /^(\d{0,2})([-]?)(\d{0,2})([-]?)(\d{0,4})$/.test(text);
+                            if (validInput || text === "") {
+                              setFormData((prevState) => ({
+                                ...prevState,
+                                merchant_tutup_sementara_date: text,
+                              }));
+                            }
+                          }}
+                          placeholder="Contoh: 13-05-2025"
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                          maxLength={10} // Limit to 10 characters (dd-mm-yyyy)
+                        />
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Ketik tanggal dengan format tanggal-bulan-tahun (dd-mm-yyyy)
+                        </Text>
+                      </View>
+                    )}
+                    {/* {formData.merchant_tutup_sementara && (
                       <View className="mt-2 ml-8">
                         <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
                         <TouchableOpacity
@@ -1625,7 +1632,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           Tap untuk memilih tanggal
                         </Text>
                       </View>
-                    )}
+                    )} */}
 
                     {/* Tutup Permanen */}
                     <View className="flex-row items-center">
@@ -1642,14 +1649,34 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
                           handleInputChangeTicketExtras("merchant_renovasi_date", "");
                           handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
-                          const defaultDate = new Date();
-                          defaultDate.setDate(defaultDate.getDate() + 30); // 1 month for permanent closure
-                          handleInputChangeTicketExtras("merchant_tutup_permanen_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan tutup permanen</Text>
                     </View>
                     {formData.merchant_tutup_permanen && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Ketik Tanggal (format: dd-mm-yyyy)</Text>
+                        <TextInput
+                          value={formData.merchant_tutup_permanen_date || ""}
+                          onChangeText={(text) => {
+                            const validInput = /^(\d{0,2})([-]?)(\d{0,2})([-]?)(\d{0,4})$/.test(text);
+                            if (validInput || text === "") {
+                              setFormData((prevState) => ({
+                                ...prevState,
+                                merchant_tutup_permanen_date: text,
+                              }));
+                            }
+                          }}
+                          placeholder="Contoh: 13-05-2025"
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                          maxLength={10} // Limit to 10 characters (dd-mm-yyyy)
+                        />
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Ketik tanggal dengan format tanggal-bulan-tahun (dd-mm-yyyy)
+                        </Text>
+                      </View>
+                    )}
+                    {/* {formData.merchant_tutup_permanen && (
                       <View className="mt-2 ml-8">
                         <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
                         <TouchableOpacity
@@ -1662,7 +1689,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           Tap untuk memilih tanggal
                         </Text>
                       </View>
-                    )}
+                    )} */}
 
                     {/* Renovasi */}
                     <View className="flex-row items-center">
@@ -1679,14 +1706,34 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
                           handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
                           handleInputChangeTicketExtras("merchant_pindah_lokasi_date", "");
-                          const defaultDate = new Date();
-                          defaultDate.setDate(defaultDate.getDate() + 14); // 2 weeks for renovation
-                          handleInputChangeTicketExtras("merchant_renovasi_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan renovasi</Text>
                     </View>
                     {formData.merchant_renovasi && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Ketik Tanggal (format: dd-mm-yyyy)</Text>
+                        <TextInput
+                          value={formData.merchant_renovasi_date || ""}
+                          onChangeText={(text) => {
+                            const validInput = /^(\d{0,2})([-]?)(\d{0,2})([-]?)(\d{0,4})$/.test(text);
+                            if (validInput || text === "") {
+                              setFormData((prevState) => ({
+                                ...prevState,
+                                merchant_renovasi_date: text,
+                              }));
+                            }
+                          }}
+                          placeholder="Contoh: 13-05-2025"
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                          maxLength={10} // Limit to 10 characters (dd-mm-yyyy)
+                        />
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Ketik tanggal dengan format tanggal-bulan-tahun (dd-mm-yyyy)
+                        </Text>
+                      </View>
+                    )}
+                    {/* {formData.merchant_renovasi && (
                       <View className="mt-2 ml-8">
                         <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
                         <TouchableOpacity
@@ -1699,7 +1746,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           Tap untuk memilih tanggal
                         </Text>
                       </View>
-                    )}
+                    )} */}
 
                     {/* Pindah Lokasi */}
                     <View className="flex-row items-center">
@@ -1716,14 +1763,34 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           handleInputChangeTicketExtras("merchant_tutup_sementara_date", "");
                           handleInputChangeTicketExtras("merchant_tutup_permanen_date", "");
                           handleInputChangeTicketExtras("merchant_renovasi_date", "");
-                          const defaultDate = new Date();
-                          defaultDate.setDate(defaultDate.getDate() + 21); // 3 weeks for location change
-                          handleInputChangeTicketExtras("merchant_pindah_lokasi_date", defaultDate.toISOString());
                         }}
                       />
                       <Text className="text-sm text-gray-600">Merchant akan pindah lokasi</Text>
                     </View>
                     {formData.merchant_pindah_lokasi && (
+                      <View className="mt-2 ml-8">
+                        <Text className="text-sm text-gray-600">Ketik Tanggal (format: dd-mm-yyyy)</Text>
+                        <TextInput
+                          value={formData.merchant_pindah_lokasi_date || ""}
+                          onChangeText={(text) => {
+                            const validInput = /^(\d{0,2})([-]?)(\d{0,2})([-]?)(\d{0,4})$/.test(text);
+                            if (validInput || text === "") {
+                              setFormData((prevState) => ({
+                                ...prevState,
+                                merchant_pindah_lokasi_date: text,
+                              }));
+                            }
+                          }}
+                          placeholder="Contoh: 13-05-2025"
+                          className="p-2 mt-2 border border-gray-300 rounded-md"
+                          maxLength={10} // Limit to 10 characters (dd-mm-yyyy)
+                        />
+                        <Text className="mt-1 text-xs italic text-gray-500">
+                          Ketik tanggal dengan format tanggal-bulan-tahun (dd-mm-yyyy)
+                        </Text>
+                      </View>
+                    )}
+                    {/* {formData.merchant_pindah_lokasi && (
                       <View className="mt-2 ml-8">
                         <Text className="text-sm text-gray-600">Pilih Tanggal</Text>
                         <TouchableOpacity
@@ -1736,7 +1803,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                           Tap untuk memilih tanggal
                         </Text>
                       </View>
-                    )}
+                    )} */}
                   </View>
                 </View>
               </View>
@@ -1863,7 +1930,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             </ScrollView>
             {/* Date Picker */}
-            {showDatePicker && (
+            {/* {showDatePicker && (
               <DateTimePicker
                 value={(() => {
                   try {
@@ -1872,26 +1939,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                       const date = new Date(dateValue);
                       // Check if date is valid
                       if (!isNaN(date.getTime())) {
-                        console.log(`Using existing date: ${date.toISOString()}`);
                         return date;
                       }
                     }
-                    const defaultDate = new Date();
-                    defaultDate.setDate(defaultDate.getDate() + 0);
-                    return defaultDate;
+                    return new Date();
                   } catch (e) {
-                    const defaultDate = new Date();
-                    defaultDate.setDate(defaultDate.getDate() + 0);
-                    return defaultDate;
+                    return new Date();
                   }
                 })()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={handleDateChange}
-                minimumDate={new Date()} /* Only allow future dates */
                 testID="datePicker"
               />
-            )}
+            )} */}
           </View>
         </View>
       </Modal >
@@ -1900,7 +1961,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       <View className="items-center justify-start flex-1 p-8 mt-4 bg-white rounded-3xl" >
         <View className="relative items-center justify-start flex-1 w-full">
           <Text className="mb-2 text-2xl font-bold text-center">Aktivitas</Text>
-          <Text className="mb-4 text-lg text-center">
+          <Text className="text-lg text-center">
             {tracking ? "Berjalan..." : "Idle"}
           </Text>
           <View>
@@ -1923,6 +1984,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 </Text>
                 {selectedTicket?.additional_info && (
                   <>
+                    <Text className="text-center text-gray-600">
+                      <Text className="font-bold">SN EDC:</Text> {selectedTicket.additional_info?.sn_edc || '-'}
+                    </Text>
                     <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
                       <Text className="text-center text-gray-600">
                         <Text className="font-bold">TID:</Text> {selectedTicket.additional_info?.tid || '-'}
@@ -1987,7 +2051,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* <View className="z-20 flex-row items-center justify-center w-full gap-x-2"> */}
           {/* <TouchableOpacity
-              onPress={() => setPhotoModalVisible(true)}
+              onPress={() => setMultiPhasePhotoModalVisible(true)}
               className="p-1 bg-red-500 rounded-full top-2 right-2"
             >
               <Text className="text-white">Debug photo modal</Text>
@@ -2009,8 +2073,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               className="p-1 bg-blue-500 rounded-full top-2 right-2"
             >
               <Text className="text-white">Debug berita acara modal</Text>
-            </TouchableOpacity>
-          </View> */}
+            </TouchableOpacity> */}
+          {/* </View> */}
 
           {/* Idle */}
           {!tracking ? (
@@ -2160,18 +2224,15 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               await stopBackgroundTracking(selectedTicket.ticket_id);
               handleLog(`Background tracking stopped for ticket: ${selectedTicket.ticket_id}`);
             }
-            const oneWeekFromNow = new Date();
-            oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 0);
-            const defaultFutureDate = oneWeekFromNow.toISOString();
             setFormData(prevData => ({
               ...prevData,
-              merchant_tutup_sementara_date: prevData.merchant_tutup_sementara ? prevData.merchant_tutup_sementara_date || defaultFutureDate : '',
-              merchant_tutup_permanen_date: prevData.merchant_tutup_permanen ? prevData.merchant_tutup_permanen_date || defaultFutureDate : '',
-              merchant_renovasi_date: prevData.merchant_renovasi ? prevData.merchant_renovasi_date || defaultFutureDate : '',
-              merchant_pindah_lokasi_date: prevData.merchant_pindah_lokasi ? prevData.merchant_pindah_lokasi_date || defaultFutureDate : ''
+              merchant_tutup_sementara_date: prevData.merchant_tutup_sementara ? prevData.merchant_tutup_sementara_date || '' : '',
+              merchant_tutup_permanen_date: prevData.merchant_tutup_permanen ? prevData.merchant_tutup_permanen_date || '' : '',
+              merchant_renovasi_date: prevData.merchant_renovasi ? prevData.merchant_renovasi_date || '' : '',
+              merchant_pindah_lokasi_date: prevData.merchant_pindah_lokasi ? prevData.merchant_pindah_lokasi_date || '' : ''
             }));
-            setMultiPhasePhotoModalVisible(false);
             setTicketExtrasModalVisible(true); // After completing all phases, show ticket extras form
+            setMultiPhasePhotoModalVisible(false);
           } catch (error) {
             handleError(`Error in MultiPhasePhotoCapture completion: ${error}`);
             // Still continue to the form even if there's an error stopping tracking

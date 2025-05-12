@@ -192,7 +192,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
     }
     const requiredPhotoCount = currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE;
     if (phasePhotos.length !== requiredPhotoCount) {
-      Alert.alert("Foto Tidak Lengkap", `Mohon ambil ${requiredPhotoCount} foto untuk tahap ini.`);
+      Alert.alert("Foto Tidak Lengkap", `Ambil ${requiredPhotoCount} foto untuk tahap ini.`);
       return;
     }
 
@@ -224,7 +224,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             setIsUploading(false);
             setUploadProgress(0);
             setUploadMessage("");
-          }, 2000);
+          }, 1000);
         } else {
           // Final phase completed
           setUploadMessage("Semua foto berhasil diunggah!");
@@ -233,7 +233,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             setIsUploading(false);
             handleLog(`All ${TOTAL_PHOTOS} photos successfully uploaded for ticket ${ticketId}`);
             onComplete(); // Call the onComplete callback to continue with ticket extras
-          }, 2000);
+          }, 1000);
         }
       } else {
         handleError(`Failed to add photos to queue for phase ${currentPhase}`);
@@ -380,12 +380,12 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             Tahap {currentPhase} dari {TOTAL_PHASES} - Ambil {currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE} Foto
           </Text>
           <Text className="mb-4 text-gray-500">
-            {`Total: ${totalPhotosTaken}/${TOTAL_PHOTOS} foto. Mohon ambil ${currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE} foto untuk tahap ini.`}
+            {`Total: ${totalPhotosTaken}/${TOTAL_PHOTOS} foto. Ambil ${currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE} foto untuk tahap ini.`}
           </Text>
 
           {/* Photo Grid */}
-          <ScrollView style={{ maxHeight: 550 }} showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 40 }}>
-            <View className="flex flex-row flex-wrap justify-between gap-2 mb-4">
+          <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 24 }}>
+            <View className="flex flex-row flex-wrap justify-between gap-2">
               {Array.from({ length: currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE }).map((_, index) => {
                 const globalIndex = getCurrentPhaseStartIndex() + index;
 
@@ -417,7 +417,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
                       </TouchableOpacity>
                     ) : (
                       <View className="items-center justify-center flex-1">
-                        <Text className="py-4 text-center text-gray-600">Belum ada foto</Text>
+                        <Text className="text-center text-gray-600">Belum ada foto</Text>
                       </View>
                     )}
                   </View>
@@ -427,6 +427,11 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
           </ScrollView>
           {/* Action Buttons */}
           <View className="mt-4">
+            <View className="items-center w-full mt-2">
+              <Text className="text-sm font-bold text-center text-red-500">
+                Pastikan semua foto sudah benar karena Anda tidak dapat kembali ke tahap sebelumnya.
+              </Text>
+            </View>
             {phasePhotos.length === (currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE) ? (
               <TouchableOpacity
                 onPress={uploadCurrentPhasePhotos}
@@ -446,19 +451,49 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
                 )}
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                onPress={handleTakePhoto}
-                disabled={isPhotoProcessed || !isConnected}
-                className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"
-                  }`}
-                activeOpacity={0.7}
-              >
-                {isPhotoProcessed ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
-                )}
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={handleTakePhoto}
+                  disabled={isPhotoProcessed || !isConnected}
+                  className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"
+                    }`}
+                  activeOpacity={0.7}
+                >
+                  {isPhotoProcessed ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text className="text-xl font-bold text-white">Ambil foto sekarang</Text>
+                  )}
+                </TouchableOpacity>
+
+                {/* Debug Buttons */}
+                {/* <View className="flex-row justify-between mt-4">
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (currentPhase > 1) {
+                        setCurrentPhase(currentPhase - 1);
+                        setPhasePhotos([]);
+                      }
+                    }}
+                    className="items-center px-4 py-2 bg-yellow-500 rounded-full"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-lg font-bold text-white">Debug: Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (currentPhase < TOTAL_PHASES) {
+                        setCurrentPhase(currentPhase + 1);
+                        setPhasePhotos([]);
+                      }
+                    }}
+                    className="items-center px-4 py-2 bg-yellow-500 rounded-full"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-lg font-bold text-white">Debug: Next</Text>
+                  </TouchableOpacity>
+                </View> */}
+              </>
             )}
           </View>
 
