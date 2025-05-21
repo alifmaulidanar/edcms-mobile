@@ -10,39 +10,80 @@ import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { saveToLibraryAsync, requestPermissionsAsync } from 'expo-media-library';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from "react-native";
 
-// Constants
-const TOTAL_PHASES = 4; // Total number of phases
-const PHOTOS_PER_PHASE = 5; // Photos per phase for phases 1-3
-const PHOTOS_IN_PHASE_4 = 4; // Photos in the final phase
-const TOTAL_PHOTOS = (PHOTOS_PER_PHASE * 3) + PHOTOS_IN_PHASE_4; // Total of 19 photos
-
-// Default photo titles (can be expanded to 20 photos)
-const photoTitles = [
-  // Phase 1 (1-5)
-  'Foto Plang',
-  'Foto EDC',
-  'Foto Stiker EDC',
-  'Foto Screen Gard',
-  'Foto SIM Card + SN EDC + SAM Card',
-  // Phase 2 (6-10)
-  'Foto Sales Draft',
-  'Foto PIC Merchant',
-  'Foto Roll Sales Draft',
-  'Foto Surat Pernyataan Training',
-  'Foto Aplikasi EDC',
-  // Phase 3 (11-15)
-  'Foto Sales Draft Patch L (EDC Konven)',
-  'Foto Screen P2G (EDC Android)',
-  'Foto BAST',
-  'Foto Sales Draft All Member Bank (tampak logo bank)',
-  'Foto Sales Draft BMRI',
-  // Phase 4 (16-19)
-  'Foto Sales Draft BNI',
-  'Foto Sales Draft BRI',
-  'Foto Sales Draft BTN',
-  'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
-  'Foto Cadangan'
-];
+// Photo configuration based on ticket type
+const TICKET_CONFIG = {
+  pullout: {
+    TOTAL_PHASES: 1,
+    PHOTOS_PER_PHASE: [4],
+    TOTAL_PHOTOS: 4,
+    photoTitles: [
+      'Foto Plang',
+      'Foto EDC',
+      'Foto Stiker EDC',
+      'Foto Screen Gard'
+    ]
+  },
+  single: {
+    TOTAL_PHASES: 2,
+    PHOTOS_PER_PHASE: [4, 4],
+    TOTAL_PHOTOS: 8,
+    photoTitles: [
+      'Foto Plang',
+      'Foto EDC',
+      'Foto Stiker EDC',
+      'Foto Screen Gard',
+      'Foto SIM Card + SN EDC + SAM Card',
+      'Foto Sales Draft',
+      'Foto PIC Merchant',
+      'Foto Roll Sales Draft'
+    ]
+  },
+  default: {
+    TOTAL_PHASES: 2,
+    PHOTOS_PER_PHASE: [4, 4],
+    TOTAL_PHOTOS: 8,
+    photoTitles: [
+      'Foto Plang',
+      'Foto EDC',
+      'Foto Stiker EDC',
+      'Foto Screen Gard',
+      'Foto SIM Card + SN EDC + SAM Card',
+      'Foto Sales Draft',
+      'Foto PIC Merchant',
+      'Foto Roll Sales Draft'
+    ]
+  },
+  sharing: {
+    TOTAL_PHASES: 4,
+    PHOTOS_PER_PHASE: [5, 5, 5, 4],
+    TOTAL_PHOTOS: 19,
+    photoTitles: [
+      // Phase 1 (1-5)
+      'Foto Plang',
+      'Foto EDC',
+      'Foto Stiker EDC',
+      'Foto Screen Gard',
+      'Foto SIM Card + SN EDC + SAM Card',
+      // Phase 2 (6-10)
+      'Foto Sales Draft',
+      'Foto PIC Merchant',
+      'Foto Roll Sales Draft',
+      'Foto Surat Pernyataan Training',
+      'Foto Aplikasi EDC',
+      // Phase 3 (11-15)
+      'Foto Sales Draft Patch L (EDC Konven)',
+      'Foto Screen P2G (EDC Android)',
+      'Foto BAST',
+      'Foto Sales Draft All Member Bank (tampak logo bank)',
+      'Foto Sales Draft BMRI',
+      // Phase 4 (16-19)
+      'Foto Sales Draft BNI',
+      'Foto Sales Draft BRI',
+      'Foto Sales Draft BTN',
+      'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
+    ]
+  }
+};
 
 interface MultiPhasePhotoCaptureProps {
   visible: boolean;
@@ -53,15 +94,21 @@ interface MultiPhasePhotoCaptureProps {
   isConnected: boolean;
   timestamp: string;
   currentLocation?: any;
+  ticketType: 'pullout' | 'single' | 'sharing' | 'default';
 }
 
 const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
-  visible, onClose, onComplete, ticketId, userId, isConnected, timestamp, currentLocation
+  visible, onClose, onComplete, ticketId, userId, isConnected, timestamp, currentLocation, ticketType = 'default'
 }) => {
+  // Get configuration based on ticket type
+  const config = TICKET_CONFIG[ticketType] || TICKET_CONFIG.default;
+
   // State variables
   const [currentPhase, setCurrentPhase] = useState<number>(1);
   const [phasePhotos, setPhasePhotos] = useState<string[]>([]);
-  const [allPhaseStatus, setAllPhaseStatus] = useState<boolean[]>([false, false, false, false]);
+  const [allPhaseStatus, setAllPhaseStatus] = useState<boolean[]>(
+    Array(config.TOTAL_PHASES).fill(false)
+  );
   const [totalPhotosTaken, setTotalPhotosTaken] = useState<number>(0);
   const [isPhotoProcessed, setIsPhotoProcessed] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -69,18 +116,35 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
+  // Reset state when ticket type changes
+  useEffect(() => {
+    setCurrentPhase(1);
+    setPhasePhotos([]);
+    setAllPhaseStatus(Array(config.TOTAL_PHASES).fill(false));
+    setTotalPhotosTaken(0);
+  }, [ticketType]);
+
   // Cleanup when component unmounts
   useEffect(() => {
     return () => {
       setPhasePhotos([]);
-      setAllPhaseStatus([false, false, false, false]);
+      setAllPhaseStatus(Array(config.TOTAL_PHASES).fill(false));
       setTotalPhotosTaken(0);
     };
   }, []);
 
+  // Calculate required photos for current phase
+  const getPhasePhotoCount = (phase: number) => {
+    return config.PHOTOS_PER_PHASE[phase - 1];
+  };
+
   // Calculate current photo index based on phase
   const getCurrentPhaseStartIndex = () => {
-    return (currentPhase - 1) * PHOTOS_PER_PHASE;
+    let startIndex = 0;
+    for (let i = 0; i < currentPhase - 1; i++) {
+      startIndex += config.PHOTOS_PER_PHASE[i];
+    }
+    return startIndex;
   };
 
   // Save photo to gallery
@@ -129,10 +193,11 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
       return false;
     }
   };
+
   // Take a photo
   const handleTakePhoto = async () => {
     setIsPhotoProcessed(true);
-    const requiredPhotoCount = currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE;
+    const requiredPhotoCount = getPhasePhotoCount(currentPhase);
     if (phasePhotos.length >= requiredPhotoCount) {
       Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto untuk tahap ini.`);
       setIsPhotoProcessed(false);
@@ -184,13 +249,14 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
       setIsPhotoProcessed(false);
     }
   };
+
   // Upload photos for current phase
   const uploadCurrentPhasePhotos = async () => {
     if (!isConnected) {
       Alert.alert("Tidak Ada Koneksi", "Pastikan perangkat terhubung ke internet untuk mengunggah foto.");
       return;
     }
-    const requiredPhotoCount = currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE;
+    const requiredPhotoCount = getPhasePhotoCount(currentPhase);
     if (phasePhotos.length !== requiredPhotoCount) {
       Alert.alert("Foto Tidak Lengkap", `Ambil ${requiredPhotoCount} foto untuk tahap ini.`);
       return;
@@ -214,24 +280,21 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
         newStatus[currentPhase - 1] = true;
         setAllPhaseStatus(newStatus);
         // Move to next phase or complete
-        if (currentPhase < TOTAL_PHASES) {
+        if (currentPhase < config.TOTAL_PHASES) {
           setUploadMessage(`Berhasil mengunggah foto tahap ${currentPhase}.`);
-          // Wait a moment to show success message before moving to next phase
-          setTimeout(() => {
-            // Reset for next phase
-            setPhasePhotos([]);
-            setCurrentPhase(currentPhase + 1);
-            setIsUploading(false);
-            setUploadProgress(0);
-            setUploadMessage("");
-          }, 1000);
+          // Reset for next phase
+          setPhasePhotos([]);
+          setCurrentPhase(currentPhase + 1);
+          setIsUploading(false);
+          setUploadProgress(0);
+          setUploadMessage("");
         } else {
           // Final phase completed
           setUploadMessage("Semua foto berhasil diunggah!");
           // Wait a moment to show success message before completing
           setTimeout(() => {
             setIsUploading(false);
-            handleLog(`All ${TOTAL_PHOTOS} photos successfully uploaded for ticket ${ticketId}`);
+            handleLog(`All ${config.TOTAL_PHOTOS} photos successfully uploaded for ticket ${ticketId}`);
             onComplete(); // Call the onComplete callback to continue with ticket extras
           }, 1000);
         }
@@ -311,7 +374,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
         "Peringatan",
         totalPhotosTaken === 0
           ? "Anda memiliki foto yang belum diunggah. Ingin keluar tanpa mengunggah?"
-          : `Anda belum menyelesaikan semua tahap (${currentPhase} dari ${TOTAL_PHASES}). Jika keluar sekarang, semua progress akan hilang.`,
+          : `Anda belum menyelesaikan semua tahap (${currentPhase} dari ${config.TOTAL_PHASES}). Jika keluar sekarang, semua progress akan hilang.`,
         [
           { text: "Batal", style: "cancel" },
           {
@@ -331,7 +394,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
 
   // Calculate progress percentage for phase
   const getPhaseProgress = () => {
-    return Math.round((totalPhotosTaken / TOTAL_PHOTOS) * 100);
+    return Math.round((totalPhotosTaken / config.TOTAL_PHOTOS) * 100);
   };
 
   return (
@@ -348,9 +411,18 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
           </Text>
 
+          {/* Ticket type indicator */}
+          {/* <View className="mt-2 mb-4">
+            <Text className="font-semibold text-center text-blue-600">
+              Jenis Tiket: {ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}
+              ({config.TOTAL_PHOTOS} foto)
+            </Text>
+          </View> */}
+
+
           {/* Phase indicator */}
           <View className="flex-row items-center justify-between mt-4 mb-2">
-            {Array.from({ length: TOTAL_PHASES }).map((_, index) => (
+            {Array.from({ length: config.TOTAL_PHASES }).map((_, index) => (
               <View key={index} className="items-center">
                 <View
                   className={`w-8 h-8 rounded-full flex items-center justify-center 
@@ -377,16 +449,16 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             />
           </View>
           <Text className="mb-2 text-lg font-bold">
-            Tahap {currentPhase} dari {TOTAL_PHASES} - Ambil {currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE} Foto
+            Tahap {currentPhase} dari {config.TOTAL_PHASES} - Ambil {getPhasePhotoCount(currentPhase)} Foto
           </Text>
           <Text className="mb-4 text-gray-500">
-            {`Total: ${totalPhotosTaken}/${TOTAL_PHOTOS} foto. Ambil ${currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE} foto untuk tahap ini.`}
+            {`Total: ${totalPhotosTaken}/${config.TOTAL_PHOTOS} foto. Ambil ${getPhasePhotoCount(currentPhase)} foto untuk tahap ini.`}
           </Text>
 
           {/* Photo Grid */}
           <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 24 }}>
             <View className="flex flex-row flex-wrap justify-between gap-2">
-              {Array.from({ length: currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE }).map((_, index) => {
+              {Array.from({ length: getPhasePhotoCount(currentPhase) }).map((_, index) => {
                 const globalIndex = getCurrentPhaseStartIndex() + index;
 
                 return (
@@ -397,7 +469,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
                   >
                     <View className="p-1 bg-gray-700 rounded-t-sm">
                       <Text className="px-1 text-sm text-white">
-                        {globalIndex + 1}. {photoTitles[globalIndex] || `Foto ${globalIndex + 1}`}
+                        {globalIndex + 1}. {config.photoTitles[globalIndex] || `Foto ${globalIndex + 1}`}
                       </Text>
                     </View>
 
@@ -432,7 +504,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
                 Pastikan semua foto sudah benar karena Anda tidak dapat kembali ke tahap sebelumnya.
               </Text>
             </View>
-            {phasePhotos.length === (currentPhase === 4 ? PHOTOS_IN_PHASE_4 : PHOTOS_PER_PHASE) ? (
+            {phasePhotos.length === getPhasePhotoCount(currentPhase) ? (
               <TouchableOpacity
                 onPress={uploadCurrentPhasePhotos}
                 disabled={isUploading || !isConnected}
@@ -444,7 +516,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
                   <ActivityIndicator color="white" />
                 ) : (
                   <Text className="text-xl font-bold text-white">
-                    {currentPhase < TOTAL_PHASES
+                    {currentPhase < config.TOTAL_PHASES
                       ? `Unggah dan lanjut ke tahap ${currentPhase + 1}`
                       : "Selesai dan unggah"}
                   </Text>

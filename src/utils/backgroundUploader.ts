@@ -102,7 +102,7 @@ const uploadWorker = async (taskData: any) => {
         title: 'Upload foto dimulai',
         body: 'Aplikasi akan mengunggah foto di latar belakang',
         sound: false,
-        priority: AndroidNotificationPriority.MIN,
+        priority: AndroidNotificationPriority.DEFAULT,
       },
       trigger: null,
     });
@@ -134,7 +134,7 @@ const uploadWorker = async (taskData: any) => {
               content: {
                 title: 'Upload selesai',
                 body: 'Semua foto berhasil diunggah',
-                sound: true,
+                sound: false,
                 priority: AndroidNotificationPriority.DEFAULT,
               },
               trigger: null,
@@ -160,7 +160,7 @@ const uploadWorker = async (taskData: any) => {
               title: 'Sedang memproses tiket',
               body: `Tiket ${currentJob.ticket_id} - Foto 1/${currentJob.photos.length}`,
               sound: false,
-              priority: AndroidNotificationPriority.LOW,
+              priority: AndroidNotificationPriority.DEFAULT,
             },
             trigger: null,
           });
@@ -278,8 +278,8 @@ const uploadWorker = async (taskData: any) => {
               content: {
                 title: 'Gagal mengunggah foto',
                 body: `Tiket ${currentJob.ticket_id} - ${currentJob.photos.length} foto - telah mencapai batas percobaan`,
-                sound: true,
-                priority: AndroidNotificationPriority.LOW,
+                sound: false,
+                priority: AndroidNotificationPriority.DEFAULT,
               },
               trigger: null,
             });
@@ -303,8 +303,8 @@ const uploadWorker = async (taskData: any) => {
       content: {
         title: 'Layanan upload terganggu',
         body: 'Terjadi kesalahan pada layanan upload. Silakan coba lagi nanti.',
-        sound: true,
-        priority: AndroidNotificationPriority.LOW,
+        sound: false,
+        priority: AndroidNotificationPriority.DEFAULT,
       },
       trigger: null,
     });
@@ -349,8 +349,8 @@ export const startUploadService = async (): Promise<boolean> => {
       content: {
         title: 'Gagal memulai layanan upload',
         body: 'Silakan coba lagi nanti atau restart aplikasi',
-        sound: true,
-        priority: AndroidNotificationPriority.LOW,
+        sound: false,
+        priority: AndroidNotificationPriority.DEFAULT,
       },
       trigger: null,
     });
