@@ -1,5 +1,5 @@
 import { setUser } from "../store";
-import { login } from "../api/auth";
+import { login, silentRefreshSession } from "../api/auth";
 import Constants from "expo-constants";
 import { useDispatch } from "react-redux";
 import React, { useState, useEffect } from "react";
@@ -41,7 +41,31 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       await AsyncStorage.setItem("userData", JSON.stringify(user));
       navigation.navigate("Main");
     } catch (error: any) {
-      Alert.alert("Login failed", error.message);
+      if (
+        error.message?.includes("Invalid Refresh Token") ||
+        error.message?.includes("Refresh Token Not Found")
+      ) {
+        Alert.alert(
+          "Sesi Berakhir",
+          "Sesi login Anda habis. Coba login ulang secara otomatis?",
+          [
+            {
+              text: "Coba Lagi",
+              onPress: async () => {
+                try {
+                  await silentRefreshSession();
+                  navigation.navigate("Main");
+                } catch (e: any) {
+                  Alert.alert("Gagal login otomatis", "Silakan login manual.");
+                }
+              },
+            },
+            { text: "Tutup", style: "cancel" },
+          ]
+        );
+      } else {
+        Alert.alert("Login failed", error.message);
+      }
     }
   };
 

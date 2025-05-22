@@ -98,6 +98,41 @@ export const createTrip = async (
   }
 }
 
+// Create a new trip without Radar
+export const createTripNoRadar = async (
+  external_id: string,
+  user_id: string,
+  geofence_id: string,
+  geofence_tag: string,
+  mode: string,
+  status: string,
+  started_location: [number, number],
+  started_at: string,
+): Promise<void> => {
+  try {
+    handleLog("Creating trip");
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/trips/status/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        external_id, user_id, geofence_id, geofence_tag, mode, status, started_location, started_at
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      handleError(`Error creating trip: ${data.message || "Unknown error"}`);
+      throw new Error(data.message || "Unknown error");
+    }
+    handleLog("Trip created successfully");
+  } catch (error) {
+    handleError(`Error: ${error}`);
+    throw error;
+  }
+}
+
 // Update a trip status & duration by trip_id
 export const updateTrip = async (trip_id: string, status: string, duration: number): Promise<void> => {
   try {
@@ -107,6 +142,52 @@ export const updateTrip = async (trip_id: string, status: string, duration: numb
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ trip_id, status, duration }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      handleError(`Error updating trip: ${data.message || "Unknown error"}`);
+      throw new Error(data.message || "Unknown error");
+    }
+    handleLog("Trip updated successfully");
+  } catch (error) {
+    handleError(`Error: ${error}`);
+    throw error;
+  }
+}
+
+// Ended trip without Radar
+export const endTripNoRadar = async (trip_id: string, status: string, duration: number, ended_location?: [number, number], ended_at?: string): Promise<void> => {
+  try {
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/trips/status/complete`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ trip_id, status, duration, ended_location, ended_at }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      handleError(`Error updating trip: ${data.message || "Unknown error"}`);
+      throw new Error(data.message || "Unknown error");
+    }
+    handleLog("Trip updated successfully");
+  } catch (error) {
+    handleError(`Error: ${error}`);
+    throw error;
+  }
+}
+
+// Cancel trip without Radar
+export const cancelTripNoRadar = async (trip_id: string, status: string): Promise<void> => {
+  try {
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/trips/status/cancel`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ trip_id, status }),
     });
 
     if (!response.ok) {

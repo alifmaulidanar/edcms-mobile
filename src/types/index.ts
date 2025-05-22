@@ -67,6 +67,16 @@ export interface Trip {
   approaching_threshold: number,
   locations?: number[],
   metadata?: any,
+  started_location?: {
+    latitude: number;
+    longitude: number;
+  };
+  ended_location?: {
+    latitude: number;
+    longitude: number;
+  };
+  started_at?: string;
+  ended_at?: string;
 };
 
 export interface QueueItem {

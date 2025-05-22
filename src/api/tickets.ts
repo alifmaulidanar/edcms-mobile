@@ -53,7 +53,7 @@ export const getSingleTicket = async (ticket_id: string) => {
 // Update tripID and ticket status in table tickets in Supabase by ticket ID by backend API
 export const updateTicket = async (ticket_id: string, trip_id: string, status: string): Promise<void> => {
   try {
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL as string}/ticket/status`, {
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/tickets/status/no-radar`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",

@@ -17,10 +17,10 @@ const TICKET_CONFIG = {
     PHOTOS_PER_PHASE: [4],
     TOTAL_PHOTOS: 4,
     photoTitles: [
-      'Foto Plang',
       'Foto EDC',
-      'Foto Stiker EDC',
-      'Foto Screen Gard'
+      'Foto BAST',
+      'Foto PIC Merchant',
+      'Foto Struk #1',
     ]
   },
   single: {
@@ -30,12 +30,12 @@ const TICKET_CONFIG = {
     photoTitles: [
       'Foto Plang',
       'Foto EDC',
-      'Foto Stiker EDC',
-      'Foto Screen Gard',
       'Foto SIM Card + SN EDC + SAM Card',
+      'Foto Roll Sales Draft',
       'Foto Sales Draft',
+      'Foto BAST',
+      'Foto Surat Pernyataan Training',
       'Foto PIC Merchant',
-      'Foto Roll Sales Draft'
     ]
   },
   default: {
@@ -45,12 +45,12 @@ const TICKET_CONFIG = {
     photoTitles: [
       'Foto Plang',
       'Foto EDC',
-      'Foto Stiker EDC',
-      'Foto Screen Gard',
       'Foto SIM Card + SN EDC + SAM Card',
+      'Foto Roll Sales Draft',
       'Foto Sales Draft',
+      'Foto BAST',
+      'Foto Surat Pernyataan Training',
       'Foto PIC Merchant',
-      'Foto Roll Sales Draft'
     ]
   },
   sharing: {
@@ -554,7 +554,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
-                      if (currentPhase < TOTAL_PHASES) {
+                      if (currentPhase < config.TOTAL_PHASES) {
                         setCurrentPhase(currentPhase + 1);
                         setPhasePhotos([]);
                       }

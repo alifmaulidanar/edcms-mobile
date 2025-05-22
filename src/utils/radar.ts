@@ -148,7 +148,11 @@ const startBackgroundTracking = async (user_id: string, username: string, ticket
       tripData.status,
       tripData.duration,
       tripData.live,
-      tripData.approaching_threshold
+      tripData.approaching_threshold,
+      // startedLocation: tripData.startedLocation, -> coordinates
+      // endedLocation: tripData.endedLocation, -> coordinates
+      // startedAt: tripData.startedAt, -> timestampz
+      // endedAt: tripData.endedAt, -> timestampz
     );
 
     // Update ticket status to "on_progress" in Supabase

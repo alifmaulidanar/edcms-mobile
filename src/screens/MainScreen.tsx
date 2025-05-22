@@ -18,7 +18,7 @@ import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
 import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
-import { cancelTrip, startBackgroundTracking, stopBackgroundTracking } from "../utils/radar";
+import { startTicketNew, stopTicketNew, cancelTripNew } from "../utils/noRadar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, Platform } from "react-native";
 
 type RootStackParamList = {
@@ -157,15 +157,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       const startTime = Date.now();
       await AsyncStorage.setItem("startTime", startTime.toString());
       await AsyncStorage.setItem("selectedTicket", JSON.stringify(selectedTicket));
-      await startBackgroundTracking(  // Start Radar trip tracking
+      const location = await getCurrentPositionAsync({});
+      const started_location: [number, number] = [location.coords.longitude, location.coords.latitude];
+      const started_at = new Date().toISOString(); // ISO format for timestampz
+      await startTicketNew(
         userData?.user_id || '',
         userData?.username || '',
         selectedTicket.ticket_id,
         selectedTicket.description,
         selectedTicket.geofence_id,
-        geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.tag || ''
+        geofence.find((g) => g.external_id === selectedTicket.geofence_id)?.tag || '',
+        started_location,
+        started_at
       );
-      handleLog('Trip started');
+      handleLog('Trip started (noRadar)');
       setTracking(true);
     } catch (error: any) {
       handleError(`Error starting trip: ${error}`);
@@ -206,13 +211,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const handleCancel = async () => {
     try {
       if (selectedTicket?.ticket_id) {
-        await cancelTrip(selectedTicket.ticket_id); // Cancel Radar trip tracking
-        await AsyncStorage.removeItem("startTime"); // Clear AsyncStorage
+        await cancelTripNew(selectedTicket.ticket_id); // Cancel trip tanpa Radar
+        await AsyncStorage.removeItem("startTime");
         await AsyncStorage.removeItem("selectedTicket");
         setTracking(false); // Reset state
         setSelectedTicket(null);
         setTime(0);
-        handleLog('Trip canceled');
+        handleLog('Trip canceled (noRadar)');
         clearLocationCache();
         onRefresh();
       }
@@ -702,6 +707,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   //     }, 200);
   //   }
   // };
+
+  const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
+    if (!ticket || !ticket.additional_info) return "default";
+    const tipeTiket = (ticket.additional_info.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
+    const edcService = (ticket.additional_info.edc_service || "").toString().toLowerCase();
+
+    if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
+      return "pullout";
+    }
+    if (edcService.includes("sharing")) {
+      return "sharing";
+    }
+    if (edcService.includes("single")) {
+      return "single";
+    }
+    return "default";
+  };
+
+  const ticketType = getTicketType(selectedTicket);
 
   return (
     <ScrollView
@@ -1995,9 +2019,36 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                         <Text className="font-bold">MID:</Text> {selectedTicket.additional_info?.mid || '-'}
                       </Text>
                     </View>
-                    <Text className="text-center text-gray-600">
-                      <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
-                    </Text>
+                    <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
+                      <Text className="text-center text-gray-600">
+                        <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
+                      </Text>
+                      <Text className="text-center text-gray-600">
+                        <View className="flex-row items-center">
+                          <Text className="font-bold text-gray-600">Jenis Tiket:</Text>
+                          <View
+                            style={{
+                              backgroundColor:
+                                ticketType === "pullout"
+                                  ? "#f59e42"
+                                  : ticketType === "sharing"
+                                    ? "#3b82f6"
+                                    : ticketType === "single"
+                                      ? "#10b981"
+                                      : "#6b7280",
+                              borderRadius: 12,
+                              paddingHorizontal: 10,
+                              paddingVertical: 2,
+                              marginLeft: 6,
+                            }}
+                          >
+                            <Text style={{ color: "white", fontWeight: "bold", fontSize: 12 }}>
+                              {ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}
+                            </Text>
+                          </View>
+                        </View>
+                      </Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => setAdditionalInfoModalVisible(true)}
                       className="items-center w-full px-1 py-2 bg-blue-500 rounded-full"
@@ -2051,11 +2102,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* <View className="z-20 flex-row items-center justify-center w-full gap-x-2"> */}
           {/* <TouchableOpacity
-              onPress={() => setMultiPhasePhotoModalVisible(true)}
-              className="p-1 bg-red-500 rounded-full top-2 right-2"
-            >
-              <Text className="text-white">Debug photo modal</Text>
-            </TouchableOpacity> */}
+            onPress={() => setMultiPhasePhotoModalVisible(true)}
+            className="z-50 p-1 bg-red-500 rounded-full top-2 right-2"
+          >
+            <Text className="text-white">Debug photo modal</Text>
+          </TouchableOpacity> */}
           {/* <TouchableOpacity
               onPress={() => {
                 const defaultDate = new Date();
@@ -2219,10 +2270,22 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         }}
         onComplete={async () => {
           try {
-            // Call stopBackgroundTracking to properly update ticket status
+            let ended_location: [number, number] = [0, 0];
+            let ended_at = new Date().toISOString();
+            try {
+              if (currentLocation && currentLocation.coords) {
+                ended_location = [currentLocation.coords.longitude, currentLocation.coords.latitude];
+              } else {
+                const location = await getCurrentPositionAsync({});
+                ended_location = [location.coords.longitude, location.coords.latitude];
+              }
+              ended_at = new Date().toISOString();
+            } catch (e) {
+              handleError('Gagal mengambil lokasi selesai, gunakan default 0,0');
+            }
             if (selectedTicket?.ticket_id) {
-              await stopBackgroundTracking(selectedTicket.ticket_id);
-              handleLog(`Background tracking stopped for ticket: ${selectedTicket.ticket_id}`);
+              await stopTicketNew(selectedTicket.ticket_id, ended_location, ended_at);
+              handleLog(`Ticket stopped (noRadar) for ticket: ${selectedTicket.ticket_id}`);
             }
             setFormData(prevData => ({
               ...prevData,
@@ -2245,6 +2308,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         isConnected={isConnected || false}
         timestamp={timestamp || ""}
         currentLocation={currentLocation}
+        ticketType={ticketType}
       />
     </ScrollView >
   );

@@ -13,6 +13,7 @@ export const login = async (email: string, password: string) => {
     if (sessionError) {
       handleError(`Error setting session: ${sessionError.message}`);
     }
+    await saveUserCredentials(email, password);
   }
   // await AsyncStorage.setItem('session', JSON.stringify(data.session.access_token));
   const userId = data.user?.id;
@@ -29,6 +30,35 @@ export const login = async (email: string, password: string) => {
   Radar.setMetadata(userData)
   Radar.setDescription(`${userData.username} - ${userData.email} - ${userData.phone}`);
   return userData;
+};
+
+export const silentRefreshSession = async () => {
+  try {
+    const session = await supabase.auth.getSession();
+    if (session.data.session) {
+      return session.data.session;
+    }
+    const creds = await AsyncStorage.getItem('userCredentials');
+    if (creds) {
+      const { email, password } = JSON.parse(creds);
+      const user = await login(email, password);
+      return user;
+    }
+    throw new Error('Session expired and no credentials found');
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    handleError(`Silent refresh session failed: ${errMsg}`);
+    throw error;
+  }
+};
+
+export const saveUserCredentials = async (email: string, password: string) => {
+  try {
+    await AsyncStorage.setItem('userCredentials', JSON.stringify({ email, password }));
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    handleError(`Failed to save credentials: ${errMsg}`);
+  }
 };
 
 // Get user data
