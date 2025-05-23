@@ -37,6 +37,12 @@ export interface Ticket {
   created_at: string;
   updated_at: string;
   additional_info?: any;
+  validation_status?: string;
+  validated_at?: string;
+  validated_by?: string;
+  hold_at?: string;
+  hold_by?: string;
+  hold_noted?: string;
 }
 
 export interface Geofence {

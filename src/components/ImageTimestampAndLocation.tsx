@@ -114,7 +114,7 @@ export const getUserLocationInfo = async (location: any, forceRefresh: boolean =
     setLocationCache(locationData);
     return locationData;
   } catch (error) {
-    handleError(`Gagal mendapatkan lokasi: ${error}`);
+    handleLog(`Gagal mendapatkan lokasi: ${error}`);
     return null;
   }
 };
@@ -133,12 +133,12 @@ const getUserLocationWithRetry = async (location: any, maxRetries = 3, delay = 5
       const userInfo = await getUserLocationInfo(location, forceRefresh);
       if (userInfo) return userInfo;
     } catch (error) {
-      handleError(`Gagal mendapatkan lokasi (Percobaan ${attempt}): ${error}`);
+      handleLog(`Gagal mendapatkan lokasi (Percobaan ${attempt}): ${error}`);
     }
     handleLog(`Menunggu ${delay / 1000} detik sebelum mencoba lagi...`);
     await new Promise(resolve => setTimeout(resolve, delay));
   }
-  handleError('Gagal mendapatkan lokasi setelah beberapa percobaan.');
+  handleLog('Gagal mendapatkan lokasi setelah beberapa percobaan.');
   return null;
 };
 
@@ -147,8 +147,18 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
   try {
     let userInfo = await getUserLocationWithRetry(location, 3, 5000, forceRefresh);
     if (!userInfo) {
-      handleError('Tidak bisa mendapatkan lokasi, menunda proses.');
-      return null;
+      // Fallback: gunakan koordinat saja, alamat dan lain-lain '[no internet]'
+      userInfo = {
+        latitude: location?.coords?.latitude || location?.latitude || 0,
+        longitude: location?.coords?.longitude || location?.longitude || 0,
+        jalan: '[no internet]',
+        kelurahan: '[no internet]',
+        kecamatan: '[no internet]',
+        kota: '[no internet]',
+        kode_pos: '[no internet]',
+        provinsi: '[no internet]',
+        negara: '[no internet]'
+      };
     }
 
     if (!photoUri || typeof photoUri !== 'string') {

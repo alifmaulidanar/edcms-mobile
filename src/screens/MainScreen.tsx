@@ -20,6 +20,7 @@ import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
 import { startTicketNew, stopTicketNew, cancelTripNew } from "../utils/noRadar";
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, Platform } from "react-native";
+import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, hasPendingQueueItems } from '../utils/offlineQueue';
 
 type RootStackParamList = {
   Login: undefined;
@@ -48,11 +49,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [isSubmittingTicketExtras, setIsSubmittingTicketExtras] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+  const [hasPendingActions, setHasPendingActions] = useState(false);
+  const [hasPendingExtras, setHasPendingExtras] = useState(false);
   // const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   // const [currentDateField, setCurrentDateField] = useState<string>('');
 
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
+
+  // Utility function to check if we can make network requests
+  const canMakeNetworkRequest = useCallback(() => {
+    return isConnected === true;
+  }, [isConnected]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -83,16 +91,36 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             handleError(`Gagal memulai BackgroundJob: ${error}`);
           }
         }
+        // Check pending queue items for UI indicators
+        setHasPendingActions(await hasPendingTicketActions());
+        setHasPendingExtras(await hasPendingTicketExtras());
       } catch (error: any) {
         handleError(`Init error: ${error}`);
       }
     };
     init();
+
+    // Setup network listener for queue processing
+    const unsubscribe = setupTicketQueueNetInfo(async (processed, stillPending) => {
+      // Update UI when queue items are processed
+      if (processed) {
+        setHasPendingActions(await hasPendingTicketActions());
+        setHasPendingExtras(await hasPendingTicketExtras());
+        onRefresh(); // Refresh ticket list if any items were processed
+      }
+    });
+
+    // Try to process queues on mount
+    processTicketActionQueue();
+    processTicketExtrasQueue();
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     if (selectedTicket?.geofence_id) {
-      const geofenceData = geofence.find((t) => t.external_id === selectedTicket.geofence_id);
+      const geofenceData = geofence.find((t) => t.external_id === selectedTicket?.geofence_id);
       if (geofenceData && geofenceData.coordinates) {
         const [longitude, latitude] = geofenceData.coordinates;
         fetchAddressFromCoordinates(latitude, longitude);
@@ -154,11 +182,49 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     try {
+      if (!userData || !userData.user_id || !userData.username) {
+        handleError('User data is not available');
+        Alert.alert('User data error', 'User data is not available.');
+        return;
+      }
+      // Selalu coba dapatkan lokasi terbaru (online/offline)
+      let started_location: [number, number] = [0, 0];
+      try {
+        const location = await getCurrentPositionAsync({});
+        started_location = [location.coords.longitude, location.coords.latitude];
+      } catch (locErr) {
+        if (currentLocation && currentLocation.coords) {
+          started_location = [currentLocation.coords.longitude, currentLocation.coords.latitude];
+        }
+      }
+      // Validasi koordinat
+      if (!started_location || started_location[0] === 0 && started_location[1] === 0) {
+        handleError('Tidak dapat mengambil koordinat lokasi. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
+        Alert.alert('Error', 'Tidak dapat mengambil koordinat lokasi. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
+        return;
+      }
+      if (!isConnected) {
+        await enqueueTicketAction({
+          type: 'start',
+          ticketId: selectedTicket.ticket_id,
+          data: {
+            user_id: userData.user_id,
+            username: userData.username,
+            description: selectedTicket.description,
+            geofence_id: selectedTicket.geofence_id,
+            geofence_tag: geofence.find(g => g.external_id === selectedTicket.geofence_id)?.tag || '',
+            started_location,
+            started_at: new Date().toISOString(),
+          },
+          createdAt: Date.now(),
+        });
+        setTracking(true); // Optimistic UI
+        return;
+      }
+      // Online: process directly
       const startTime = Date.now();
       await AsyncStorage.setItem("startTime", startTime.toString());
       await AsyncStorage.setItem("selectedTicket", JSON.stringify(selectedTicket));
-      const location = await getCurrentPositionAsync({});
-      const started_location: [number, number] = [location.coords.longitude, location.coords.latitude];
       const started_at = new Date().toISOString(); // ISO format for timestampz
       await startTicketNew(
         userData?.user_id || '',
@@ -187,31 +253,59 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       setIsCompleting(false);
       return;
     }
-
+    // Ambil lokasi terbaru sebelum buka modal foto
+    let ended_location: [number, number] = [0, 0];
+    let ended_at = new Date().toISOString();
+    let latestLocation = null;
     try {
-      const { status } = await requestPermissionsAsync();
-      if (status !== 'granted') {
-        handleError('Izin lokasi tidak diberikan');
+      try {
+        const location = await getCurrentPositionAsync({});
+        ended_location = [location.coords.longitude, location.coords.latitude];
+        latestLocation = location;
+        setCurrentLocation(location); // update state supaya modal foto dapat lokasi valid
+      } catch (locErr) {
+        if (currentLocation && currentLocation.coords) {
+          ended_location = [currentLocation.coords.longitude, currentLocation.coords.latitude];
+          latestLocation = currentLocation;
+        }
+      }
+      // Validasi koordinat
+      if (!ended_location || ended_location[0] === 0 && ended_location[1] === 0) {
+        handleError('Tidak dapat mengambil koordinat lokasi selesai. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
+        Alert.alert('Error', 'Tidak dapat mengambil koordinat lokasi selesai. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
         setIsCompleting(false);
         return;
       }
-      const location = await getCurrentPositionAsync({});
-      setTimestamp(moment().tz("Asia/Jakarta").format("DD MMM YYYY HH:mm:ss"));
-      clearLocationCache();
-      setCurrentLocation(location);
-      setMultiPhasePhotoModalVisible(true);
-    } catch (error) {
-      handleError(`Error in handleCompleteTrip: ${error}`);
-      setIsCompleting(false);
-      Alert.alert("Error", "Terjadi kesalahan saat mempersiapkan pengambilan foto. Silakan coba lagi.");
+    } catch (e) {
+      handleError('Gagal mengambil lokasi selesai, gunakan default 0,0');
     }
+    if (!isConnected) {
+      await enqueueTicketAction({
+        type: 'stop',
+        ticketId: ticket_id,
+        data: { ended_location, ended_at },
+        createdAt: Date.now(),
+      });
+    } else {
+      await stopTicketNew(ticket_id, ended_location as [number, number], ended_at);
+    }
+    // Buka modal foto, pastikan currentLocation sudah terupdate
+    setMultiPhasePhotoModalVisible(true);
+    setIsCompleting(false);
   };
 
-  // Handle Cancel Tracking (Cancel Trip)
   const handleCancel = async () => {
     try {
       if (selectedTicket?.ticket_id) {
-        await cancelTripNew(selectedTicket.ticket_id); // Cancel trip tanpa Radar
+        if (!isConnected) {
+          await enqueueTicketAction({
+            type: 'cancel',
+            ticketId: selectedTicket.ticket_id,
+            createdAt: Date.now(),
+          });
+        } else {
+          await cancelTripNew(selectedTicket.ticket_id);
+        }
         await AsyncStorage.removeItem("startTime");
         await AsyncStorage.removeItem("selectedTicket");
         setTracking(false); // Reset state
@@ -331,50 +425,50 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     if (selectedTicket?.additional_info) {
       setFormData(prevData => ({
         ...prevData,
-        sn_edc: selectedTicket.additional_info?.sn_edc || prevData.sn_edc,
-        tid_mti: selectedTicket.additional_info?.tid || prevData.tid_mti,
+        sn_edc: selectedTicket?.additional_info?.sn_edc || prevData.sn_edc,
+        tid_mti: selectedTicket?.additional_info?.tid || prevData.tid_mti,
         tid_member_bank: prevData.tid_member_bank,
-        mid_mti: selectedTicket.additional_info?.mid || prevData.mid_mti,
+        mid_mti: selectedTicket?.additional_info?.mid || prevData.mid_mti,
         mid_member_bank: prevData.mid_member_bank,
-        sim_card: selectedTicket.additional_info?.sn_sim_card || prevData.sim_card,
-        sam_card: selectedTicket.additional_info?.sn_sam_card || prevData.sam_card,
+        sim_card: selectedTicket?.additional_info?.sn_sim_card || prevData.sim_card,
+        sam_card: selectedTicket?.additional_info?.sn_sam_card || prevData.sam_card,
         edc_description: prevData.edc_description,
-        edc_notes: selectedTicket.additional_info?.noted || prevData.edc_notes,
+        edc_notes: selectedTicket?.additional_info?.noted || prevData.edc_notes,
         edc_cleaning: prevData.edc_cleaning,
         edc_problem: prevData.edc_problem,
         started_on: prevData.started_on,
         vendor_code: "MDM",
-        task: selectedTicket.description || prevData.task,
+        task: selectedTicket?.description || prevData.task,
         thermal_supply: prevData.thermal_supply,
-        com_line: selectedTicket.additional_info?.connection_type || prevData.com_line,
+        com_line: selectedTicket?.additional_info?.connection_type || prevData.com_line,
         profile_sticker: prevData.profile_sticker,
         base_adaptor: prevData.base_adaptor,
         settlement: prevData.settlement,
-        signal_bar: selectedTicket.additional_info?.signal_bar || prevData.signal_bar,
-        signal_type: selectedTicket.additional_info?.signal_type || prevData.signal_type,
-        edc_condition: selectedTicket.additional_info?.edc_condition || prevData.edc_condition,
+        signal_bar: selectedTicket?.additional_info?.signal_bar || prevData.signal_bar,
+        signal_type: selectedTicket?.additional_info?.signal_type || prevData.signal_type,
+        edc_condition: selectedTicket?.additional_info?.edc_condition || prevData.edc_condition,
         merchant_name: prevData.merchant_name,
         merchant_address: prevData.merchant_address,
         merchant_location: prevData.merchant_location,
         merchant_city: prevData.merchant_city,
-        pic_name: selectedTicket.additional_info?.contact_person_merchant || prevData.pic_name,
-        pic_phone: selectedTicket.additional_info?.phone_merchant || prevData.pic_phone,
+        pic_name: selectedTicket?.additional_info?.contact_person_merchant || prevData.pic_name,
+        pic_phone: selectedTicket?.additional_info?.phone_merchant || prevData.pic_phone,
         member_bank_category: prevData.member_bank_category,
-        edc_priority: selectedTicket.additional_info?.priority_edc || prevData.edc_priority,
+        edc_priority: selectedTicket?.additional_info?.priority_edc || prevData.edc_priority,
         edc_count: prevData.edc_count,
         thermal_stock: prevData.thermal_stock,
         manual_book: prevData.manual_book,
-        merchant_condition: selectedTicket.additional_info?.merchant_condition || prevData.merchant_condition,
-        merchant_comment: selectedTicket.additional_info?.merchant_comment || prevData.merchant_comment,
+        merchant_condition: selectedTicket?.additional_info?.merchant_condition || prevData.merchant_condition,
+        merchant_comment: selectedTicket?.additional_info?.merchant_comment || prevData.merchant_comment,
         training_trx_qr: prevData.training_trx_qr,
         training_trx_prepaid: prevData.training_trx_prepaid,
         training_trx_credit: prevData.training_trx_credit,
         training_trx_debit: prevData.training_trx_debit,
-        usual_edc: selectedTicket.additional_info?.edc_yang_sering_digunakan || prevData.usual_edc,
-        other_edc: selectedTicket.additional_info?.edc_bank_lainnya || prevData.other_edc,
-        merchant_request: selectedTicket.additional_info?.merchant_request || prevData.merchant_request,
-        promo_material: selectedTicket.additional_info?.promo_matrial_ || prevData.promo_material,
-        case_remaks: selectedTicket.additional_info?.case_remaks || prevData.case_remaks,
+        usual_edc: selectedTicket?.additional_info?.edc_yang_sering_digunakan || prevData.usual_edc,
+        other_edc: selectedTicket?.additional_info?.edc_bank_lainnya || prevData.other_edc,
+        merchant_request: selectedTicket?.additional_info?.merchant_request || prevData.merchant_request,
+        promo_material: selectedTicket?.additional_info?.promo_matrial_ || prevData.promo_material,
+        case_remaks: selectedTicket?.additional_info?.case_remaks || prevData.case_remaks,
       }));
     }
   }, [selectedTicket]);
@@ -524,14 +618,34 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           convertDateToISOWithJakartaTZ(formData.merchant_pindah_lokasi_date) : ''
       }
 
-      await updateTicketExtras(selectedTicket?.ticket_id || "", processedData);
-      clearLocationCache();
+      // Check if device is online
+      if (!canMakeNetworkRequest()) {
+        // If offline, add to queue
+        handleLog(`No internet connection. Adding ticket extras to offline queue for ticket: ${selectedTicket?.ticket_id}`);
+        await enqueueTicketExtras({
+          ticketId: selectedTicket?.ticket_id || "",
+          extrasData: processedData,
+          createdAt: Date.now()
+        });
+        handleLog(`Ticket extras added to queue successfully for ticket: ${selectedTicket?.ticket_id}`);
+      } else {
+        // If online, submit directly
+        await updateTicketExtras(selectedTicket?.ticket_id || "", processedData);
+        handleLog(`Ticket extras submitted directly for ticket: ${selectedTicket?.ticket_id}`);
+      }
 
+      // Clear location cache to ensure fresh data on next use
+      clearLocationCache();
+      // Show success UI with appropriate message
       setTimeout(() => {
         // jangan ditukar
         setIsSubmittingTicketExtras(false);
         setTicketExtrasModalVisible(false);
-        alert("Data berhasil disimpan! Tiket telah ditandai selesai.");
+        if (!canMakeNetworkRequest()) {
+          alert("Data disimpan di perangkat! Akan dikirim ke server saat koneksi tersedia.");
+        } else {
+          alert("Data berhasil disimpan! Tiket telah ditandai selesai.");
+        }
       }, 1000);
       // Reset states
       setTracking(false);
@@ -637,6 +751,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         promo_material: "",
         case_remaks: "",
       });
+
+      // Update pending extras status and refresh ticket list
+      setHasPendingExtras(await hasPendingTicketExtras());
       onRefresh();
     } catch (error) {
       handleError(`Error submitting ticket extras: ${error}`);
@@ -709,9 +826,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   // };
 
   const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
-    if (!ticket || !ticket.additional_info) return "default";
-    const tipeTiket = (ticket.additional_info.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
-    const edcService = (ticket.additional_info.edc_service || "").toString().toLowerCase();
+    if (!ticket || !ticket?.additional_info) return "default";
+    const tipeTiket = (ticket?.additional_info?.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
+    const edcService = (ticket?.additional_info?.edc_service || "").toString().toLowerCase();
 
     if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
       return "pullout";
@@ -726,6 +843,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const ticketType = getTicketType(selectedTicket);
+
+  useEffect(() => {
+    const checkPending = async () => {
+      setHasPendingActions(await hasPendingTicketActions());
+      setHasPendingExtras(await hasPendingTicketExtras());
+    };
+    checkPending();
+    const interval = setInterval(checkPending, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <ScrollView
@@ -747,6 +874,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Internet Status Badge */}
       <View className="mt-4">
+        {hasPendingActions && (
+          <Text className="px-2 py-1 mb-1 text-xs text-center text-yellow-700 bg-yellow-200 rounded-full">Ada aksi tiket yang tertunda, akan disinkronkan saat online</Text>
+        )}
+        {hasPendingExtras && (
+          <Text className="px-2 py-1 mb-1 text-xs text-center text-yellow-700 bg-yellow-200 rounded-full">Ada berita acara yang tertunda, akan disinkronkan saat online</Text>
+        )}
         <Text className={`text-sm font-bold text-center py-2 px-4 rounded-full ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
           {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
         </Text>
@@ -754,7 +887,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Tickets Dropdown */}
       <View className="mt-4">
-        <Text className="mb-2 text-lg font-bold">Pilih Tiket yang Tersedia</Text>
+        <View className="flex-row items-center mb-2">
+          <Text className="mr-2 text-lg font-bold">
+            Pilih Tiket yang Tersedia
+          </Text>
+          <View className="px-3 py-1 bg-blue-500 rounded-full">
+            <Text className="text-sm font-bold text-white">
+              {tickets.filter((ticket) => ticket.status === 'assigned').length} tiket
+            </Text>
+          </View>
+        </View>
         <View style={{ maxHeight: 100, overflow: 'hidden' }}>
           <ScrollView>
             <Picker
@@ -781,7 +923,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     <Picker.Item
                       style={{ fontSize: 12 }}
                       key={ticket.id}
-                      label={`${truncatedDescription} - ${ticket.additional_info?.tipe_tiket || ""} - TID: ${ticket.additional_info?.tid || ''}`}
+                      label={`${truncatedDescription} - ${ticket?.additional_info?.tipe_tiket || ""} - TID: ${ticket?.additional_info?.tid || ''}`}
                       value={ticket.id}
                     />
                   );
@@ -970,7 +1112,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Dimulai Pada</Text>
                     <TextInput
-                      value={selectedTicket ? moment(selectedTicket.updated_at).format("DD/MM/YYYY, HH:mm") : ""}
+                      value={selectedTicket ? moment(selectedTicket?.updated_at).format("DD/MM/YYYY, HH:mm") : ""}
                       onChangeText={(text) => handleInputChangeTicketExtras("started_on", text)}
                       // placeholder="Dimulai Pada"
                       className="p-2 mt-2 bg-gray-200 border border-gray-300 rounded-md"
@@ -1942,16 +2084,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               {/* Submit Button */}
               <TouchableOpacity
                 onPress={handleSubmitTicketExtras}
-                className={`items-center px-8 py-4 mt-6 mb-4 rounded-full ${isSubmittingTicketExtras ? "bg-gray-300" : "bg-blue-500"}`}
+                className={`items-center px-8 py-4 mt-6 mb-4 rounded-full ${isSubmittingTicketExtras ? "bg-gray-300" : isConnected ? "bg-blue-500" : "bg-amber-500"}`}
                 activeOpacity={0.7}
                 disabled={isSubmittingTicketExtras}
               >
                 {isSubmittingTicketExtras ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-xl font-bold text-white">Simpan Berita Acara</Text>
+                  <Text className="text-xl font-bold text-white">
+                    {isConnected ? 'Simpan Berita Acara' : 'Simpan Berita Acara (Offline)'}
+                  </Text>
                 )}
               </TouchableOpacity>
+
+              {/* Connection Status Message */}
+              {!isConnected && !isSubmittingTicketExtras && (
+                <Text className="px-4 py-2 mx-8 mb-4 text-xs text-center rounded text-amber-800 bg-amber-100">
+                  Data akan disimpan di perangkat dan dikirim ke server secara otomatis saat koneksi tersedia
+                </Text>
+              )}
             </ScrollView>
             {/* Date Picker */}
             {/* {showDatePicker && (
@@ -1998,30 +2149,30 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             {!tracking && selectedTicket && (
               <View className="z-10 gap-y-2">
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket.ticket_id}
+                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id ?? '-'}
                 </Text>
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket.description}
+                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description ?? '-'}
                 </Text>
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">Lokasi Tujuan:</Text> {geofenceLookup[selectedTicket.geofence_id]?.description}
+                  <Text className="font-bold">Lokasi Tujuan:</Text> {selectedTicket && geofenceLookup[selectedTicket.geofence_id]?.description ? geofenceLookup[selectedTicket.geofence_id]?.description : '-'}
                 </Text>
                 {selectedTicket?.additional_info && (
                   <>
                     <Text className="text-center text-gray-600">
-                      <Text className="font-bold">SN EDC:</Text> {selectedTicket.additional_info?.sn_edc || '-'}
+                      <Text className="font-bold">SN EDC:</Text> {selectedTicket?.additional_info?.sn_edc ?? '-'}
                     </Text>
                     <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
                       <Text className="text-center text-gray-600">
-                        <Text className="font-bold">TID:</Text> {selectedTicket.additional_info?.tid || '-'}
+                        <Text className="font-bold">TID:</Text> {selectedTicket?.additional_info?.tid ?? '-'}
                       </Text>
                       <Text className="text-center text-gray-600">
-                        <Text className="font-bold">MID:</Text> {selectedTicket.additional_info?.mid || '-'}
+                        <Text className="font-bold">MID:</Text> {selectedTicket?.additional_info?.mid ?? '-'}
                       </Text>
                     </View>
                     <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
                       <Text className="text-center text-gray-600">
-                        <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
+                        <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket?.additional_info?.tipe_tiket ?? '-'}
                       </Text>
                       <Text className="text-center text-gray-600">
                         <View className="flex-row items-center">
@@ -2181,9 +2332,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         {/* Start/Stop Button */}
         <TouchableOpacity
           onPress={tracking ? handleCompletetWithConfirmation : handleStartWithConfirmation}
-          className={`items-center w-full py-4 px-8 rounded-full ${isCompleting || !isConnected ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
           activeOpacity={0.7}
-          disabled={isCompleting || !isConnected}
+          // disabled={isCompleting || !isConnected}
+          // className={`items-center w-full py-4 px-8 rounded-full ${isCompleting || !isConnected ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
+          disabled={isCompleting}
+          className={`items-center w-full py-4 px-8 rounded-full ${isCompleting ? "bg-gray-300" : tracking ? "bg-red-500" : "bg-[#059669]"}`}
         >
           {isCompleting ? (
             <ActivityIndicator color="white" />
@@ -2200,7 +2353,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             onPress={handleCanceltWithConfirmation}
             className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
             activeOpacity={0.7}
-            disabled={!isConnected}
+          // disabled={!isConnected}
           >
             <Text className="text-xl font-bold text-white">Batalkan</Text>
           </TouchableOpacity>
@@ -2225,16 +2378,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </Text>
               <View className="my-4 gap-y-2">
                 <Text className="text-sm text-gray-600">
-                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id}
+                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id ?? '-'}
                 </Text>
                 <Text className="text-sm text-gray-600">
-                  <Text className="font-bold">ID Tempat:</Text> {selectedTicket?.geofence_id}
+                  <Text className="font-bold">ID Tempat:</Text> {selectedTicket?.geofence_id ?? '-'}
                 </Text>
                 <Text className="text-sm text-gray-600">
-                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description}
+                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description ?? '-'}
                 </Text>
                 <Text className="text-sm text-gray-600">
-                  <Text className="font-bold">Tempat tujuan:</Text> {geofenceLookup[selectedTicket?.geofence_id ?? ""]?.description || "Tidak tersedia"}
+                  <Text className="font-bold">Tempat tujuan:</Text> {selectedTicket && geofenceLookup[selectedTicket.geofence_id]?.description ? geofenceLookup[selectedTicket.geofence_id]?.description : '-'}
                 </Text>
               </View>
               <View className="flex-row justify-between mt-4">
@@ -2284,8 +2437,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               handleError('Gagal mengambil lokasi selesai, gunakan default 0,0');
             }
             if (selectedTicket?.ticket_id) {
-              await stopTicketNew(selectedTicket.ticket_id, ended_location, ended_at);
-              handleLog(`Ticket stopped (noRadar) for ticket: ${selectedTicket.ticket_id}`);
+              await stopTicketNew(selectedTicket?.ticket_id, ended_location, ended_at);
+              handleLog(`Ticket stopped (noRadar) for ticket: ${selectedTicket?.ticket_id}`);
             }
             setFormData(prevData => ({
               ...prevData,

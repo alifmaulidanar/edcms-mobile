@@ -100,7 +100,7 @@ export const stopTicketNew = async (ticket_id: string, ended_location?: [number,
     await updateTicket(ticket_id, trip_id, 'completed');
     handleLog('Trip completed successfully');
   } catch (err) {
-    handleError(`Error completing trip: ${err}`);
+    handleLog(`Error completing trip: ${err}`);
   }
 };
 
@@ -125,6 +125,6 @@ export const cancelTripNew = async (ticket_id: string) => {
     handleLog('Trip canceled successfully');
     handleLog('Background tracking stopped after trip cancellation.');
   } catch (err) {
-    handleError(`Error canceling trip: ${err}`);
+    handleLog(`Error canceling trip: ${err}`);
   }
 };

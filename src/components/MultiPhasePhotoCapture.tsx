@@ -6,6 +6,7 @@ import { startUploadService } from "../utils/backgroundUploader";
 import { addTimestampToPhoto } from "./ImageTimestampAndLocation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
+import { getCurrentPositionAsync } from 'expo-location';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { saveToLibraryAsync, requestPermissionsAsync } from 'expo-media-library';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from "react-native";
@@ -205,6 +206,22 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
     }
 
     try {
+      // Pastikan currentLocation valid, jika tidak, coba ambil ulang
+      let locationToUse = currentLocation;
+      if (!locationToUse || !locationToUse.coords || locationToUse.coords.longitude === 0 && locationToUse.coords.latitude === 0) {
+        try {
+          const freshLoc = await getCurrentPositionAsync({});
+          locationToUse = freshLoc;
+        } catch (e) {
+          // fallback ke currentLocation jika ada
+          if (currentLocation && currentLocation.coords) {
+            locationToUse = currentLocation;
+          } else {
+            locationToUse = { coords: { longitude: 0, latitude: 0 } };
+          }
+        }
+      }
+
       const result = await launchCameraAsync({
         mediaTypes: MediaTypeOptions.Images,
         quality: 0.4,
@@ -218,7 +235,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
           photoUri,
           `${ticketId}-${timestamp}-${globalIndex}.jpg`,
           timestamp,
-          currentLocation
+          locationToUse
         );
 
         if (processedUri) {
@@ -252,10 +269,10 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
 
   // Upload photos for current phase
   const uploadCurrentPhasePhotos = async () => {
-    if (!isConnected) {
-      Alert.alert("Tidak Ada Koneksi", "Pastikan perangkat terhubung ke internet untuk mengunggah foto.");
-      return;
-    }
+    // if (!isConnected) {
+    //   Alert.alert("Tidak Ada Koneksi", "Pastikan perangkat terhubung ke internet untuk mengunggah foto.");
+    //   return;
+    // }
     const requiredPhotoCount = getPhasePhotoCount(currentPhase);
     if (phasePhotos.length !== requiredPhotoCount) {
       Alert.alert("Foto Tidak Lengkap", `Ambil ${requiredPhotoCount} foto untuk tahap ini.`);
@@ -269,9 +286,13 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
       const startIndex = getCurrentPhaseStartIndex();
       const success = await addToQueue(phasePhotos, ticketId, userId, startIndex);
       if (success) {
-        setUploadMessage(`Memulai unggah foto tahap ${currentPhase}...`);
+        setUploadMessage(
+          isConnected
+            ? `Memulai unggah foto tahap ${currentPhase}...`
+            : `Foto berhasil ditambahkan ke antrian. Akan diunggah otomatis saat online.`
+        );
         // Start the background upload service if it's not running
-        if (!BackgroundJob.isRunning()) {
+        if (isConnected && !BackgroundJob.isRunning()) {
           await startUploadService();
         }
 
@@ -281,7 +302,11 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
         setAllPhaseStatus(newStatus);
         // Move to next phase or complete
         if (currentPhase < config.TOTAL_PHASES) {
-          setUploadMessage(`Berhasil mengunggah foto tahap ${currentPhase}.`);
+          setUploadMessage(
+            isConnected
+              ? `Berhasil mengunggah foto tahap ${currentPhase}.`
+              : `Foto tahap ${currentPhase} menunggu upload (offline).`
+          );
           // Reset for next phase
           setPhasePhotos([]);
           setCurrentPhase(currentPhase + 1);
@@ -290,7 +315,11 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
           setUploadMessage("");
         } else {
           // Final phase completed
-          setUploadMessage("Semua foto berhasil diunggah!");
+          setUploadMessage(
+            isConnected
+              ? "Semua foto berhasil diunggah!"
+              : "Semua foto telah masuk antrian upload."
+          );
           // Wait a moment to show success message before completing
           setTimeout(() => {
             setIsUploading(false);
@@ -507,9 +536,10 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             {phasePhotos.length === getPhasePhotoCount(currentPhase) ? (
               <TouchableOpacity
                 onPress={uploadCurrentPhasePhotos}
-                disabled={isUploading || !isConnected}
-                className={`items-center px-8 py-4 my-2 rounded-full ${isUploading || !isConnected ? "bg-gray-300" : "bg-blue-500"
-                  }`}
+                // disabled={isUploading || !isConnected}
+                // className={`items-center px-8 py-4 my-2 rounded-full ${isUploading || !isConnected ? "bg-gray-300" : "bg-blue-500"}`}
+                disabled={isUploading}
+                className={`items-center px-8 py-4 my-2 rounded-full ${isUploading ? "bg-gray-300" : "bg-blue-500"}`}
                 activeOpacity={0.7}
               >
                 {isUploading ? (
@@ -526,9 +556,10 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
               <>
                 <TouchableOpacity
                   onPress={handleTakePhoto}
-                  disabled={isPhotoProcessed || !isConnected}
-                  className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"
-                    }`}
+                  // disabled={isPhotoProcessed || !isConnected}
+                  // className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"}`}
+                  disabled={isPhotoProcessed}
+                  className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed ? "bg-gray-300" : "bg-[#059669]"}`}
                   activeOpacity={0.7}
                 >
                   {isPhotoProcessed ? (
