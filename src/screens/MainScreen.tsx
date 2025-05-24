@@ -30,7 +30,7 @@ import { getQueueContents, getExtrasQueueContents, clearTicketQueue, clearTicket
  * Gets the selected ticket from AsyncStorage
  * Used as the primary source of truth for selectedTicket
  */
-const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
+export const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
   try {
     const storedTicket = await AsyncStorage.getItem("selectedTicket");
     if (storedTicket) {
@@ -49,7 +49,7 @@ const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
  * Saves the selected ticket to AsyncStorage
  * This should be called whenever the selectedTicket changes
  */
-const setSelectedTicketToStorage = async (ticket: Ticket | null): Promise<void> => {
+export const setSelectedTicketToStorage = async (ticket: Ticket | null): Promise<void> => {
   try {
     if (ticket) {
       await AsyncStorage.setItem("selectedTicket", JSON.stringify(ticket));
@@ -115,6 +115,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const checkTicketStatus = async () => {
+      if (tracking && selectedTicket) {
+        const storedTicket = await getSelectedTicketFromStorage();
+        if (storedTicket && storedTicket.status !== selectedTicket.status) {
+          setSelectedTicket(storedTicket);
+        }
+      }
+    };
+    const interval = setInterval(checkTicketStatus, 5000); // Sync setiap 5 detik
+    return () => clearInterval(interval);
+  }, [tracking, selectedTicket]);
 
   useEffect(() => {
     // AsyncStorage.removeItem("uploadQueue");
@@ -190,45 +203,47 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
 
+      // Fetch both assigned and on_progress tickets
       const assignedTicketsWithGeofences = await getTicketsWithGeofences(userData.user_id, 'assigned');
+      const onProgressTicketsWithGeofences = await getTicketsWithGeofences(userData.user_id, 'on_progress');
+      const allTicketsWithGeofences = [...assignedTicketsWithGeofences, ...onProgressTicketsWithGeofences];
+
       let ticketsData: Ticket[] = [];
       let geofencesData: Geofence[] = [];
-      if (assignedTicketsWithGeofences.length > 0) {
-        ticketsData = assignedTicketsWithGeofences.map(item => {
+      if (allTicketsWithGeofences.length > 0) {
+        ticketsData = allTicketsWithGeofences.map(item => {
           const { geofence_data, ...ticketOnly } = item;
           return ticketOnly;
         });
-        geofencesData = assignedTicketsWithGeofences
+        geofencesData = allTicketsWithGeofences
           .filter(item => item.geofence_data)
           .map(item => item.geofence_data);
       }
       setTickets(ticketsData);
       setGeofence(geofencesData);
-      handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);      // --- Advanced logic for selectedTicket persistence ---
+      handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);
 
-      // Case 1: If we're in any critical operation, don't touch selectedTicket at all
+      // --- Advanced logic for selectedTicket persistence ---
       if (tracking || multiPhasePhotoModalVisible || ticketExtrasModalVisible) {
         handleLog("Critical operation in progress - preserving selectedTicket state");
         return;
       }
 
-      // Case 2: If we have a stored ticket from AsyncStorage, prioritize it
       if (storedTicket) {
-        // Check if the ticket from AsyncStorage still exists in the fetched tickets
-        const storedTicketExists = ticketsData.some(t => t.ticket_id === storedTicket.ticket_id);
-        if (storedTicketExists) {
-          // Use the latest ticket data but keep the same ID
-          const updatedTicket = ticketsData.find(t => t.ticket_id === storedTicket.ticket_id);
-          if (updatedTicket) {
-            // Always update the state with the latest data from API to ensure we have current status
-            handleLog(`Restoring selectedTicket from AsyncStorage: ${storedTicket.ticket_id}`);
-            // Only update if there's actual data changes to avoid infinite loops
-            if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
-              setSelectedTicket(updatedTicket);
-              setCurrentTicketID(updatedTicket.ticket_id);
-              // Save the updated ticket back to storage to keep it in sync
-              await setSelectedTicketToStorage(updatedTicket);
-            }
+        const updatedTicket = allTicketsWithGeofences.find(t => t.ticket_id === storedTicket.ticket_id);
+        if (updatedTicket) {
+          // Perbarui status tiket di AsyncStorage jika berbeda
+          if (updatedTicket.status !== storedTicket.status) {
+            await setSelectedTicketToStorage(updatedTicket);
+          }
+          // Always update the state with the latest data from API to ensure we have current status
+          handleLog(`Restoring selectedTicket from AsyncStorage: ${storedTicket.ticket_id}`);
+          // Only update if there's actual data changes to avoid infinite loops
+          if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
+            setSelectedTicket(updatedTicket);
+            setCurrentTicketID(updatedTicket.ticket_id);
+            // Save the updated ticket back to storage to keep it in sync
+            await setSelectedTicketToStorage(updatedTicket);
           }
         } else if (!tracking) {
           // If the stored ticket no longer exists and we're not tracking, clear it
@@ -241,26 +256,26 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       }
       // Case 3: No stored ticket, but we have selectedTicket in state
       if (selectedTicket) {
-        const ticketStillExists = ticketsData.some(t => t.ticket_id === selectedTicket.ticket_id);
-        if (ticketStillExists) {
-          // Get the updated ticket data
-          const updatedTicket = ticketsData.find(t => t.ticket_id === selectedTicket.ticket_id);
-          if (updatedTicket) {
-            // Only update if there are actual changes to avoid infinite loops
-            if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
-              // Update state with latest data and save to storage
-              setSelectedTicket(updatedTicket);
-              await setSelectedTicketToStorage(updatedTicket);
-              handleLog(`Updated selectedTicket data and saved to storage: ${updatedTicket.ticket_id}`);
-            }
+        const updatedTicket = allTicketsWithGeofences.find(t => t.ticket_id === selectedTicket.ticket_id);
+        if (updatedTicket) {
+          // Perbarui status tiket di AsyncStorage jika berbeda
+          if (updatedTicket.status !== selectedTicket.status) {
+            await setSelectedTicketToStorage(updatedTicket);
           }
-        } else if (!tracking) {
-          // If the ticket no longer exists and we're not tracking, clear everything
-          handleLog("selectedTicket no longer exists in tickets list and not tracking - clearing state and storage");
-          setSelectedTicket(null);
-          setCurrentTicketID(null);
-          await setSelectedTicketToStorage(null);
+          // Only update if there are actual changes to avoid infinite loops
+          if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
+            // Update state with latest data and save to storage
+            setSelectedTicket(updatedTicket);
+            await setSelectedTicketToStorage(updatedTicket);
+            handleLog(`Updated selectedTicket data and saved to storage: ${updatedTicket.ticket_id}`);
+          }
         }
+      } else if (!tracking) {
+        // If the ticket no longer exists and we're not tracking, clear everything
+        handleLog("selectedTicket no longer exists in tickets list and not tracking - clearing state and storage");
+        setSelectedTicket(null);
+        setCurrentTicketID(null);
+        await setSelectedTicketToStorage(null);
       }
     } catch (error: any) {
       handleError(`Error in optimized fetch: ${error.message}`);
@@ -293,15 +308,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracking]); // Only re-run when tracking status changes
+
   // Handle pull-to-refresh with improved selectedTicket persistence
   const onRefresh = async () => {
     // Disable refresh if tracking, submitting extras, or capturing photos
     if (tracking || isSubmittingTicketExtras || multiPhasePhotoModalVisible) return;
     setIsRefreshing(true);
     // Save selectedTicket to storage before refresh if it exists
-    if (selectedTicket) {
-      await setSelectedTicketToStorage(selectedTicket);
-    }
+    // if (selectedTicket) {
+    //   await setSelectedTicketToStorage(selectedTicket);
+    // }
+    console.log("Refreshing tickets and geofences...");
+    await setSelectedTicketToStorage(null); // Ensure storage is cleared
+    setSelectedTicket(null); // Reset selectedTicket state
+    setCurrentTicketID(null); // Reset currentTicketID state
     // Fetch new data - the fetchTicketsWithGeofences function now handles
     // selectedTicket persistence using AsyncStorage as the source of truth
     await fetchTicketsWithGeofences();

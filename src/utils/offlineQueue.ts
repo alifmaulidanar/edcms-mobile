@@ -3,6 +3,7 @@ import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { log as handleLog, error as handleError } from './logHandler';
 import { startTicketNew, stopTicketNew, cancelTripNew } from './noRadar';
+import { getSelectedTicketFromStorage, setSelectedTicketToStorage } from '../screens/MainScreen';
 
 const QUEUE_KEY = 'ticketActionQueue';
 const TICKET_EXTRAS_QUEUE_KEY = 'ticketExtrasQueue';
@@ -214,6 +215,20 @@ async function processSingleAction(item: TicketActionQueueItem) {
         item.data.started_location,
         item.data.started_at
       );
+
+      // 2. Update local storage
+      const currentTicket = await getSelectedTicketFromStorage();
+      if (currentTicket && currentTicket.ticket_id === item.ticketId) {
+        const updatedTicket = {
+          ...currentTicket,
+          status: 'on_progress',
+          updated_at: new Date().toISOString() // Tambahkan timestamp update
+        };
+
+        // 3. Simpan ke AsyncStorage dan state
+        await setSelectedTicketToStorage(updatedTicket);
+        handleLog(`Updated ticket in storage: ${JSON.stringify(updatedTicket)}`);
+      }
       break;
     case 'stop':
       if (!item.data) throw new Error('Missing data for stop action');
@@ -226,25 +241,32 @@ async function processSingleAction(item: TicketActionQueueItem) {
       handleError(`[QUEUE] Unknown action type: ${item.type} for ticket ${item.ticketId}`);
       throw new Error('Unknown action type');
   }
-  handleLog(`[QUEUE] Successfully executed API call for action: ${item.type}, Ticket ID: ${item.ticketId}`);
+  handleLog(`[QUEUE] Successfully executed API call for action: ${item.type}, Ticket ID: ${item.ticketId} `);
 }
 
 // Process a single ticket extras item
 async function processTicketExtras(item: TicketExtrasQueueItem) {
-  handleLog(`[EXTRAS QUEUE] Executing API call for ticket extras, Ticket ID: ${item.ticketId}`);
+  handleLog(`[EXTRAS QUEUE] Executing API call for ticket extras, Ticket ID: ${item.ticketId} `);
   await updateTicketExtras(item.ticketId, item.extrasData);
-  handleLog(`[EXTRAS QUEUE] Successfully executed API call for ticket extras, Ticket ID: ${item.ticketId}`);
+  handleLog(`[EXTRAS QUEUE] Successfully executed API call for ticket extras, Ticket ID: ${item.ticketId} `);
 }
 
 // Listen for network changes and process queue when online
 export function setupTicketQueueNetInfo(callback?: (processedSuccessfully: boolean, queueStillHasPending: boolean) => void) {
   handleLog('[QUEUE] Setting up NetInfo listener for ticket queue.');
   const unsubscribe = NetInfo.addEventListener(async state => {
-    handleLog(`[QUEUE] Network state changed. IsConnected: ${state.isConnected}`);
+    handleLog(`[QUEUE] Network state changed.IsConnected: ${state.isConnected} `);
     if (state.isConnected) {
       handleLog('[QUEUE] Network is connected. Triggering queue processing.');
+      // 1. Cek status tracking sebelum proses queue
+      // const storedTicket = await getSelectedTicketFromStorage();
+      // const isTracking = !!(await AsyncStorage.getItem("startTime")) && !!storedTicket;
+
+      // 2. Proses queue
       const processedActions = await processTicketActionQueue();
       const processedExtras = await processTicketExtrasQueue();
+
+      // 3. Update callback dengan status tracking
       if (callback) {
         const stillPendingActions = await hasPendingTicketActions();
         const stillPendingExtras = await hasPendingTicketExtras();
@@ -263,7 +285,7 @@ export async function hasPendingTicketActions(): Promise<boolean> {
     return queue.length > 0;
   } catch (e: any) {
     const errorMessage = e.message ? e.message : JSON.stringify(e);
-    handleError(`[QUEUE] Failed to check for pending actions: ${errorMessage}`);
+    handleError(`[QUEUE] Failed to check for pending actions: ${errorMessage} `);
     return false; // Assume no pending actions if error occurs
   }
 }
@@ -276,7 +298,7 @@ export async function hasPendingTicketExtras(): Promise<boolean> {
     return queue.length > 0;
   } catch (e: any) {
     const errorMessage = e.message ? e.message : JSON.stringify(e);
-    handleError(`[EXTRAS QUEUE] Failed to check for pending ticket extras: ${errorMessage}`);
+    handleError(`[EXTRAS QUEUE] Failed to check for pending ticket extras: ${errorMessage} `);
     return false; // Assume no pending ticket extras if error occurs
   }
 }
@@ -294,7 +316,7 @@ export async function getQueueContents(): Promise<TicketActionQueueItem[]> {
     return raw ? JSON.parse(raw) : [];
   } catch (e: any) {
     const errorMessage = e.message ? e.message : JSON.stringify(e);
-    handleError(`[QUEUE] Failed to get queue contents: ${errorMessage}`);
+    handleError(`[QUEUE] Failed to get queue contents: ${errorMessage} `);
     return [];
   }
 }
@@ -305,7 +327,7 @@ export async function getExtrasQueueContents(): Promise<TicketExtrasQueueItem[]>
     return raw ? JSON.parse(raw) : [];
   } catch (e: any) {
     const errorMessage = e.message ? e.message : JSON.stringify(e);
-    handleError(`[EXTRAS QUEUE] Failed to get extras queue contents: ${errorMessage}`);
+    handleError(`[EXTRAS QUEUE] Failed to get extras queue contents: ${errorMessage} `);
     return [];
   }
 }
@@ -317,7 +339,7 @@ export async function clearTicketQueue() {
     handleLog('[QUEUE] Successfully cleared ticket action queue.');
   } catch (e: any) {
     const errorMessage = e.message ? e.message : JSON.stringify(e);
-    handleError(`[QUEUE] Failed to clear ticket action queue: ${errorMessage}`);
+    handleError(`[QUEUE] Failed to clear ticket action queue: ${errorMessage} `);
   }
 }
 
@@ -328,6 +350,6 @@ export async function clearTicketExtrasQueue() {
     handleLog('[EXTRAS QUEUE] Successfully cleared ticket extras queue.');
   } catch (e: any) {
     const errorMessage = e.message ? e.message : JSON.stringify(e);
-    handleError(`[EXTRAS QUEUE] Failed to clear ticket extras queue: ${errorMessage}`);
+    handleError(`[EXTRAS QUEUE] Failed to clear ticket extras queue: ${errorMessage} `);
   }
 }

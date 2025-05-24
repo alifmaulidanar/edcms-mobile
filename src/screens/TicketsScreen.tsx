@@ -190,6 +190,7 @@ const TicketsScreen = () => {
   // Handle pull-to-refresh with optimized approach
   const onRefresh = async () => {
     setIsRefreshing(true);
+    setSelectedTicketId(null);
     await fetchTicketsWithGeofences();
   };
 
@@ -279,6 +280,18 @@ const TicketsScreen = () => {
         setIsLoadingMore(false);
       }, 500);
     };
+
+    // Compute most recent on_progress ticket_id if in tab index 1
+    let mostRecentOnProgressId: string | null = null;
+    if (index === 1 && filteredAndSortedTickets.length > 0) {
+      // Only consider tickets with status 'on_progress'
+      const onProgress = filteredAndSortedTickets.filter((t: any) => t.status === 'on_progress');
+      if (onProgress.length > 0) {
+        mostRecentOnProgressId = onProgress.reduce((latest: any, curr: any) => {
+          return new Date(curr.updated_at) > new Date(latest.updated_at) ? curr : latest;
+        }, onProgress[0]).ticket_id;
+      }
+    }
 
     return (
       <View>
@@ -400,6 +413,7 @@ const TicketsScreen = () => {
               selectedTicketId={selectedTicketId}
               selectTicket={selectTicket}
               index={index}
+              mostRecentOnProgressId={mostRecentOnProgressId}
             />
           )}
         />
@@ -826,7 +840,8 @@ const TicketItem = React.memo(({
   isAnyTicketInProgress,
   selectedTicketId,
   selectTicket,
-  index
+  index,
+  mostRecentOnProgressId
 }: {
   ticket: Ticket;
   geofenceLookup: Record<string, Geofence>;
@@ -835,6 +850,7 @@ const TicketItem = React.memo(({
   selectedTicketId: string | null;
   selectTicket: (ticket: Ticket) => Promise<void>;
   index: number;
+  mostRecentOnProgressId?: string | null;
 }) => {
   const navigation = useNavigation<any>();
   const userData = useSelector((state: RootState) => state.user);
@@ -957,14 +973,29 @@ const TicketItem = React.memo(({
       onPress={() => handleTicketPress(ticket)}
     >
       <View>
+        {/* Badge for most recent on_progress ticket */}
+        {index === 1 && mostRecentOnProgressId === ticket.ticket_id && (
+          <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, zIndex: 10 }}>
+            <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>Terbaru</Text>
+          </View>
+        )}
         <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
         <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
         <Text style={{ fontWeight: "500", color: "#4B5563" }}>
           {geofenceDescription}
         </Text>
+        <Text style={{ fontWeight: "500" }}>MID: {ticket.additional_info?.mid || '-'}</Text>
+        <Text style={{ fontWeight: "500" }}>TID: {ticket.additional_info?.tid || '-'}</Text>
+        <Text style={{ fontWeight: "500" }}>Tipe Tiket: {ticket.additional_info?.tipe_tiket || '-'}</Text>
+        <Text style={{ fontWeight: "500" }}>EDC Service: {ticket.additional_info?.edc_service || '-'}</Text>
         <Text style={{ color: "gray" }}>
           Dibuat: {createdAtFormatted}
         </Text>
+        {(index === 1 || index === 3) && (
+          <Text style={{ color: "gray" }}>
+            Diperbarui: {updatedAtFormatted}
+          </Text>
+        )}
         {index === 2 && (
           <Text style={{ color: "gray" }}>
             Selesai: {updatedAtFormatted}
