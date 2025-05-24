@@ -703,6 +703,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   //   }
   // };
 
+  const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
+    if (!ticket || !ticket.additional_info) return "default";
+    const tipeTiket = (ticket.additional_info.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
+    const edcService = (ticket.additional_info.edc_service || "").toString().toLowerCase();
+
+    if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
+      return "pullout";
+    }
+    if (edcService.includes("sharing")) {
+      return "sharing";
+    }
+    if (edcService.includes("single")) {
+      return "single";
+    }
+    return "default";
+  };
+
+  const ticketType = getTicketType(selectedTicket);
+
   return (
     <ScrollView
       className='bg-[#f5f5f5] p-6 mt-4'
@@ -730,7 +749,16 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Tickets Dropdown */}
       <View className="mt-4">
-        <Text className="mb-2 text-lg font-bold">Pilih Tiket yang Tersedia</Text>
+        <View className="flex-row items-center mb-2">
+          <Text className="mr-2 text-lg font-bold">
+            Pilih Tiket yang Tersedia
+          </Text>
+          <View className="px-3 py-1 bg-blue-500 rounded-full">
+            <Text className="text-sm font-bold text-white">
+              {tickets.filter((ticket) => ticket.status === 'assigned').length} tiket
+            </Text>
+          </View>
+        </View>
         <View style={{ maxHeight: 100, overflow: 'hidden' }}>
           <ScrollView>
             <Picker
@@ -1974,13 +2002,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             {!tracking && selectedTicket && (
               <View className="z-10 gap-y-2">
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket.ticket_id}
+                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket.ticket_id ?? '-'}
                 </Text>
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket.description}
+                  <Text className="font-bold">Deskripsi:</Text> {selectedTicket.description ?? '-'}
                 </Text>
                 <Text className="text-center text-gray-600">
-                  <Text className="font-bold">Lokasi Tujuan:</Text> {geofenceLookup[selectedTicket.geofence_id]?.description}
+                  <Text className="font-bold">Lokasi Tujuan:</Text> {geofenceLookup[selectedTicket.geofence_id]?.description ?? '-'}
                 </Text>
                 {selectedTicket?.additional_info && (
                   <>
@@ -1995,9 +2023,36 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                         <Text className="font-bold">MID:</Text> {selectedTicket.additional_info?.mid || '-'}
                       </Text>
                     </View>
-                    <Text className="text-center text-gray-600">
-                      <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
-                    </Text>
+                    <View className="flex-row flex-wrap justify-center gap-x-4 gap-y-2">
+                      <Text className="text-center text-gray-600">
+                        <Text className="font-bold">Tipe Tiket:</Text> {selectedTicket.additional_info?.tipe_tiket || '-'}
+                      </Text>
+                      <Text className="text-center text-gray-600">
+                        <View className="flex-row items-center">
+                          <Text className="font-bold text-gray-600">Jenis Tiket:</Text>
+                          <View
+                            style={{
+                              backgroundColor:
+                                ticketType === "pullout"
+                                  ? "#f59e42"
+                                  : ticketType === "sharing"
+                                    ? "#3b82f6"
+                                    : ticketType === "single"
+                                      ? "#10b981"
+                                      : "#6b7280",
+                              borderRadius: 12,
+                              paddingHorizontal: 10,
+                              paddingVertical: 2,
+                              marginLeft: 6,
+                            }}
+                          >
+                            <Text style={{ color: "white", fontWeight: "bold", fontSize: 12 }}>
+                              {ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}
+                            </Text>
+                          </View>
+                        </View>
+                      </Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => setAdditionalInfoModalVisible(true)}
                       className="items-center w-full px-1 py-2 bg-blue-500 rounded-full"
@@ -2245,6 +2300,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         isConnected={isConnected || false}
         timestamp={timestamp || ""}
         currentLocation={currentLocation}
+        ticketType={ticketType}
       />
     </ScrollView >
   );

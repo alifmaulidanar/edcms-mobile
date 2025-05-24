@@ -147,8 +147,18 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
   try {
     let userInfo = await getUserLocationWithRetry(location, 3, 5000, forceRefresh);
     if (!userInfo) {
-      handleError('Tidak bisa mendapatkan lokasi, menunda proses.');
-      return null;
+      // Fallback: gunakan koordinat saja, alamat dan lain-lain '[no internet]'
+      userInfo = {
+        latitude: location?.coords?.latitude || location?.latitude || 0,
+        longitude: location?.coords?.longitude || location?.longitude || 0,
+        jalan: '[no internet]',
+        kelurahan: '[no internet]',
+        kecamatan: '[no internet]',
+        kota: '[no internet]',
+        kode_pos: '[no internet]',
+        provinsi: '[no internet]',
+        negara: '[no internet]'
+      };
     }
 
     if (!photoUri || typeof photoUri !== 'string') {

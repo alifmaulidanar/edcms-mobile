@@ -4,15 +4,15 @@ import { Geofence, Ticket } from "../types";
 import { setStringAsync } from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
+import { useNavigation } from '@react-navigation/native';
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
 import { downloadAsync, documentDirectory } from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { getSingleTicket, getTicketsWithGeofences } from "../api/tickets";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
-import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, Pressable, RefreshControl, Dimensions, Image, Alert, TextInput } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator } from "react-native";
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
 
@@ -88,22 +88,39 @@ const TicketsScreen = () => {
         return;
       }
 
-      // Fetch all ticket statuses at once to avoid multiple API calls
-      const allTicketsWithGeofences = await Promise.all([
-        getTicketsWithGeofences(userData.user_id, 'assigned'),
-        getTicketsWithGeofences(userData.user_id, 'on_progress'),
-        getTicketsWithGeofences(userData.user_id, 'completed'),
-        getTicketsWithGeofences(userData.user_id, 'canceled')
-      ]);
+      setIsRefreshing(true);
 
-      // Process each status batch into a combined dataset
+      // Fetch all ticket statuses at once to avoid multiple API calls, but with a short delay between them
+      // to prevent overwhelming the device
+      const assignedData = await getTicketsWithGeofences(userData.user_id, 'assigned');
+
+      // Process assigned tickets first for better perceived performance (active tab is shown first)
       const processedTickets: Ticket[] = [];
       const geofences: Geofence[] = [];
       const geofenceLookupMap: Record<string, Geofence> = {};
 
-      // Process each batch of tickets with their geofences
-      allTicketsWithGeofences.forEach(batch => {
-        batch.forEach(item => {
+      // Process assigned tickets
+      assignedData.forEach(item => {
+        const { geofence_data, ...ticketData } = item;
+        processedTickets.push(ticketData as Ticket);
+        if (geofence_data) {
+          geofences.push(geofence_data);
+          if (geofence_data.external_id) {
+            geofenceLookupMap[geofence_data.external_id] = geofence_data;
+          }
+        }
+      });
+
+      // Update state with the first batch of data to make UI responsive
+      setTickets(processedTickets);
+      setGeofence(geofences);
+      setGeofenceLookup(geofenceLookupMap);
+
+      // Then fetch the rest of the data in sequence to prevent overwhelming the device
+      const otherStatuses = ['on_progress', 'completed', 'canceled'];
+      for (const status of otherStatuses) {
+        const batchData = await getTicketsWithGeofences(userData.user_id, status);
+        batchData.forEach(item => {
           const { geofence_data, ...ticketData } = item;
           processedTickets.push(ticketData as Ticket);
           if (geofence_data) {
@@ -113,13 +130,18 @@ const TicketsScreen = () => {
             }
           }
         });
-      });
-      setTickets(processedTickets);
-      setGeofence(geofences);
-      setGeofenceLookup(geofenceLookupMap);
+
+        // Update state after processing each batch
+        setTickets([...processedTickets]);
+        setGeofence([...geofences]);
+        setGeofenceLookup({ ...geofenceLookupMap });
+      }
+
       handleLog(`✅ Optimized fetch: ${processedTickets.length} tickets with ${geofences.length} unique geofences`);
+      setIsRefreshing(false);
     } catch (error: any) {
-      handleError(`Error in optimized fetch: ${error.message}`);
+      handleLog(`Error in optimized fetch: ${error.message}`);
+      setIsRefreshing(false);
     }
   }, [userData]);
 
@@ -147,7 +169,6 @@ const TicketsScreen = () => {
     return unsubscribe;
   }, [navigation]);
 
-  // useEffect untuk memeriksa apakah ada tiket yang sedang berjalan (tracking)
   useEffect(() => {
     const checkTrackingStatus = async () => {
       try {
@@ -168,7 +189,6 @@ const TicketsScreen = () => {
   const onRefresh = async () => {
     setIsRefreshing(true);
     await fetchTicketsWithGeofences();
-    setIsRefreshing(false);
   };
 
   const handleTicketPress = (ticket: Ticket) => {
@@ -199,6 +219,14 @@ const TicketsScreen = () => {
     const [sortKey, setSortKey] = useState("updated_at"); // Sort state
     const [sortOrder, setSortOrder] = useState("desc"); // Sort order state
     const [filterKey, setFilterKey] = useState(""); // Filter state
+    const [pageSize] = useState(20); // Number of items to display per page
+    const [currentPage, setCurrentPage] = useState(1); // Current page number
+    const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more indicator
+
+    // Reset pagination when tickets or filters change
+    useEffect(() => {
+      setCurrentPage(1);
+    }, [tickets, searchText, sortKey, sortOrder, filterKey]);
 
     // Filtered and sorted tickets
     const filteredAndSortedTickets = useMemo(() => {
@@ -234,6 +262,22 @@ const TicketsScreen = () => {
       return sorted;
     }, [tickets, searchText, sortKey, sortOrder, filterKey]);
 
+    // Get paginated data
+    const paginatedTickets = useMemo(() => {
+      return filteredAndSortedTickets.slice(0, currentPage * pageSize);
+    }, [filteredAndSortedTickets, currentPage, pageSize]);
+
+    // Check if there are more items to load
+    const hasMoreItems = paginatedTickets.length < filteredAndSortedTickets.length;
+    const loadMoreItems = () => {
+      if (!hasMoreItems || isLoadingMore) return;
+      setIsLoadingMore(true);
+      setTimeout(() => {
+        setCurrentPage(prevPage => prevPage + 1);
+        setIsLoadingMore(false);
+      }, 500);
+    };
+
     return (
       <View>
         {/* Search Bar */}
@@ -260,6 +304,7 @@ const TicketsScreen = () => {
                 className="bg-white rounded-lg"
               >
                 <Picker.Item label="Tanggal Dibuat" value="created_at" />
+                <Picker.Item label="Tanggal Selesai" value="updated_at" />
                 <Picker.Item label="Deskripsi" value="description" />
               </Picker>
             </View>
@@ -279,118 +324,100 @@ const TicketsScreen = () => {
           </View>
         </View>
 
+        {/* Ticket Count & Validation Status (for completed tickets) */}
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginRight: 16, marginBottom: 4 }}>
+          <Text style={{ color: "#6B7280", fontSize: 14 }}>
+            Total: {filteredAndSortedTickets.length} tiket
+          </Text>
+        </View>
+        {/* Show validation status counts only for completed tab */}
+        {index === 2 && (
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginRight: 16, marginBottom: 4, gap: 12 }}>
+            <Text style={{ color: "#6B7280", fontSize: 13 }}>
+              Belum divalidasi: {filteredAndSortedTickets.filter((t: any) => t.validation_status == null).length}
+            </Text>
+            <Text style={{ color: "#10B981", fontSize: 13 }}>
+              Tervalidasi: {filteredAndSortedTickets.filter((t: any) => t.validation_status === "validated").length}
+            </Text>
+            <Text style={{ color: "#F59E42", fontSize: 13 }}>
+              Hold: {filteredAndSortedTickets.filter((t: any) => t.validation_status === "hold").length}
+            </Text>
+          </View>
+        )}
+
         {/* Tickets List */}
-        <ScrollView
+        <FlatList
+          data={paginatedTickets}
+          keyExtractor={(item) => item.ticket_id}
           contentContainerStyle={{ paddingBottom: 130 }}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
-        >
-          {filteredAndSortedTickets.map((ticket: any) => {
-            const geofenceItem = geofenceLookup[ticket.geofence_id];
-            const geofenceDescription = geofenceItem?.description || 'Loading location...';
-            return (
-              <TouchableOpacity
-                key={ticket.ticket_id}
-                style={{
-                  backgroundColor: "white",
-                  padding: 16,
-                  marginTop: 6,
-                  marginBottom: 6,
-                  marginRight: 8,
-                  marginLeft: 8,
-                  borderRadius: 8,
-                  borderLeftWidth: 4,
-                  borderColor:
-                    ticket.status === "assigned"
-                      ? "blue"
-                      : ticket.status === "on_progress"
-                        ? "yellow"
-                        : ticket.status === "completed"
-                          ? "green"
-                          : "red",
-                }}
-                onPress={() => handleTicketPress(ticket)}
-              >
-                <View>
-                  <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
-                  <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
-                  <Text style={{ fontWeight: "500", color: "#4B5563" }}>
-                    {geofenceDescription}
-                  </Text>
-                  <Text style={{ color: "gray" }}>
-                    Dibuat: {(() => {
-                      const createdAt = new Date(ticket.created_at);
-                      const day = String(createdAt.getDate()).padStart(2, "0");
-                      const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-                      const year = createdAt.getFullYear();
-                      const hours = String(createdAt.getHours()).padStart(2, "0");
-                      const minutes = String(createdAt.getMinutes()).padStart(2, "0");
-                      const seconds = String(createdAt.getSeconds()).padStart(2, "0");
-                      return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
-                    })()}
-                  </Text>
-                  {index === 2 && completedTickets && (
-                    <Text style={{ color: "gray" }}>
-                      Selesai: {(() => {
-                        const createdAt = new Date(ticket.updated_at);
-                        const day = String(createdAt.getDate()).padStart(2, "0");
-                        const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-                        const year = createdAt.getFullYear();
-                        const hours = String(createdAt.getHours()).padStart(2, "0");
-                        const minutes = String(createdAt.getMinutes()).padStart(2, "0");
-                        const seconds = String(createdAt.getSeconds()).padStart(2, "0");
-                        return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
-                      })()}
-                    </Text>
-                  )}
-                  {ticket.status === "assigned" && (
-                    <TouchableOpacity
-                      onPress={() => isAnyTicketInProgress ? null : selectTicket(ticket)}
-                      disabled={isAnyTicketInProgress}
-                      style={{
-                        backgroundColor: isAnyTicketInProgress
-                          ? "#9ca3af" // Abu-abu ketika disabled
-                          : selectedTicketId === ticket.ticket_id
-                            ? "#22c55e"
-                            : "#3B82F6",
-                        padding: 8,
-                        borderRadius: 4,
-                        marginTop: 8,
-                        flexDirection: 'row',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        opacity: isAnyTicketInProgress ? 0.6 : 1,
-                      }}
-                    >
-                      {selectedTicketId === ticket.ticket_id && !isAnyTicketInProgress && (
-                        <Ionicons name="checkmark-circle" size={16} color="white" style={{ marginRight: 4 }} />
-                      )}
-                      <Text style={{ color: "white", textAlign: "center" }}>
-                        {isAnyTicketInProgress
-                          ? "Tidak tersedia (tiket sedang berjalan)"
-                          : selectedTicketId === ticket.ticket_id
-                            ? "Terpilih (Klik untuk Batal)"
-                            : "Pilih"}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-
-          {filteredAndSortedTickets.length === 0 && (
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          removeClippedSubviews={true}
+          onEndReached={loadMoreItems}
+          onEndReachedThreshold={0.5}
+          ListEmptyComponent={() => (
             <Text style={{ textAlign: "center", color: "gray", marginTop: 16 }}>
               Tidak ada tiket yang tersedia.
             </Text>
           )}
-        </ScrollView>
+          ListFooterComponent={() => (
+            hasMoreItems ? (
+              <View style={{ padding: 16, alignItems: 'center' }}>
+                {isLoadingMore ? (
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                ) : (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#3B82F6',
+                      paddingVertical: 8,
+                      paddingHorizontal: 16,
+                      borderRadius: 4,
+                    }}
+                    onPress={loadMoreItems}
+                  >
+                    <Text style={{ color: 'white' }}>Muat Lebih Banyak</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : filteredAndSortedTickets.length > 0 ? (
+              <Text style={{ textAlign: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24, color: 'gray' }}>
+                Semua tiket telah dimuat
+              </Text>
+            ) : null
+          )}
+          renderItem={({ item: ticket }) => (
+            <TicketItem
+              ticket={ticket}
+              geofenceLookup={geofenceLookup}
+              handleTicketPress={handleTicketPress}
+              isAnyTicketInProgress={isAnyTicketInProgress}
+              selectedTicketId={selectedTicketId}
+              selectTicket={selectTicket}
+              index={index}
+            />
+          )}
+        />
       </View>
     );
   }
 
-  // Tab Scenes
+  // Render a loading placeholder for lazy loading
+  const renderLazyPlaceholder = () => (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5', padding: 16 }}>
+      <ActivityIndicator size="large" color="#3B82F6" />
+      <Text style={{ marginTop: 16, color: '#4B5563', fontSize: 16, fontWeight: '500' }}>
+        Memuat data tiket...
+      </Text>
+      <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center', maxWidth: '80%' }}>
+        Mohon tunggu sementara kami menyiapkan daftar tiket Anda
+      </Text>
+    </View>
+  );
+  // Define the tabs first
   const ActiveTab = () => (
     <TicketsList
       tickets={assignedTickets}
@@ -430,6 +457,14 @@ const TicketsScreen = () => {
       handleTicketPress={handleTicketPress}
     />
   );
+
+  // Tab Scenes with lazy loading - defined after the tabs
+  const lazyTabScenes = SceneMap({
+    active: ActiveTab,
+    on_progress: OnProgressTab,
+    complete: CompleteTab,
+    canceled: CanceledTab,
+  });
 
   const handleGetTicketWithPhotos = async (ticketId: string | undefined) => {
     if (!ticketId) {
@@ -475,22 +510,20 @@ const TicketsScreen = () => {
 
       <TabView
         navigationState={{ index, routes }}
-        renderScene={SceneMap({
-          active: ActiveTab,
-          on_progress: OnProgressTab,
-          complete: CompleteTab,
-          canceled: CanceledTab,
-        })}
+        renderScene={lazyTabScenes}
         onIndexChange={setIndex}
         initialLayout={{ width: Dimensions.get("window").width }}
+        renderLazyPlaceholder={renderLazyPlaceholder}
+        lazy={true}
+        lazyPreloadDistance={0}
         renderTabBar={(props) => (
           <TabBar
             {...props}
-            indicatorStyle={{ backgroundColor: "#3B82F6", height: 3, borderRadius: 5 }}
-            style={{ backgroundColor: "#f5f5f5", shadowOpacity: 0.2 }}
-            labelStyle={{ color: "gray", fontWeight: "600" }}
+            indicatorStyle={{ backgroundColor: "#3B82F6", height: 3 }}
+            style={{ backgroundColor: "#f5f5f5" }}
+            tabStyle={{ padding: 8 }}
             activeColor="#3B82F6"
-            inactiveColor="#9CA3AF"
+            inactiveColor="#666"
           />
         )}
       />
@@ -783,5 +816,145 @@ const TicketsScreen = () => {
     </View >
   );
 };
+
+const TicketItem = React.memo(({
+  ticket,
+  geofenceLookup,
+  handleTicketPress,
+  isAnyTicketInProgress,
+  selectedTicketId,
+  selectTicket,
+  index
+}: {
+  ticket: Ticket;
+  geofenceLookup: Record<string, Geofence>;
+  handleTicketPress: (ticket: Ticket) => void;
+  isAnyTicketInProgress: boolean;
+  selectedTicketId: string | null;
+  selectTicket: (ticket: Ticket) => Promise<void>;
+  index: number;
+}) => {
+  const geofenceItem = geofenceLookup[ticket.geofence_id];
+  const geofenceDescription = geofenceItem?.description || 'Loading location...';
+
+  // Badge color and label for validation_status
+  let validationBadge = null;
+  if (index === 2) {
+    if (ticket.validation_status === "validated") {
+      validationBadge = (
+        <View style={{ backgroundColor: "#10B981", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start", marginTop: 4 }}>
+          <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>Tervalidasi</Text>
+        </View>
+      );
+    } else if (ticket.validation_status === "hold") {
+      validationBadge = (
+        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+          <View style={{ backgroundColor: "#F59E42", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" }}>
+            <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>Hold</Text>
+          </View>
+          {ticket.hold_noted ? (
+            <View style={{ marginLeft: 8 }}>
+              <Text style={{ color: "#222", fontSize: 12 }}>{ticket.hold_noted}</Text>
+            </View>
+          ) : null}
+        </View>
+      );
+    } else {
+      validationBadge = (
+        <View style={{ backgroundColor: "#6B7280", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start", marginTop: 4 }}>
+          <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>Belum divalidasi</Text>
+        </View>
+      );
+    }
+  }
+
+  // Format dates once
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+  };
+
+  const createdAtFormatted = formatDate(ticket.created_at);
+  const updatedAtFormatted = formatDate(ticket.updated_at);
+
+  return (
+    <TouchableOpacity
+      style={{
+        backgroundColor: "white",
+        padding: 16,
+        marginTop: 6,
+        marginBottom: 6,
+        marginRight: 8,
+        marginLeft: 8,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderColor:
+          ticket.status === "assigned"
+            ? "blue"
+            : ticket.status === "on_progress"
+              ? "yellow"
+              : ticket.status === "completed"
+                ? "green"
+                : "red",
+      }}
+      onPress={() => handleTicketPress(ticket)}
+    >
+      <View>
+        <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
+        <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
+        <Text style={{ fontWeight: "500", color: "#4B5563" }}>
+          {geofenceDescription}
+        </Text>
+        <Text style={{ color: "gray" }}>
+          Dibuat: {createdAtFormatted}
+        </Text>
+        {index === 2 && (
+          <Text style={{ color: "gray" }}>
+            Selesai: {updatedAtFormatted}
+          </Text>
+        )}
+        {/* Validation Status Badge */}
+        {validationBadge}
+        {ticket.status === "assigned" && (
+          <TouchableOpacity
+            onPress={() => isAnyTicketInProgress ? null : selectTicket(ticket)}
+            disabled={isAnyTicketInProgress}
+            style={{
+              backgroundColor: isAnyTicketInProgress
+                ? "#9ca3af" // Abu-abu ketika disabled
+                : selectedTicketId === ticket.ticket_id
+                  ? "#22c55e"
+                  : "#3B82F6",
+              padding: 8,
+              borderRadius: 4,
+              marginTop: 8,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+              opacity: isAnyTicketInProgress ? 0.6 : 1,
+            }}
+          >
+            {selectedTicketId === ticket.ticket_id && !isAnyTicketInProgress && (
+              <Ionicons name="checkmark-circle" size={16} color="white" style={{ marginRight: 4 }} />
+            )}
+            <Text style={{ color: "white", textAlign: "center" }}>
+              {isAnyTicketInProgress
+                ? "Tidak tersedia (tiket sedang berjalan)"
+                : selectedTicketId === ticket.ticket_id
+                  ? "Terpilih (Klik untuk Batal)"
+                  : "Pilih"}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+});
 
 export default TicketsScreen;

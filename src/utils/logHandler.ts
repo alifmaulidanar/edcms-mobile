@@ -95,6 +95,6 @@ export const log = (message: any) => {
 };
 
 export const error = (message: any) => {
-  console.error(message);
+  console.log(message);
   writeLog(message);
 };

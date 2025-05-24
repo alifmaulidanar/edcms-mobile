@@ -37,6 +37,12 @@ export interface Ticket {
   created_at: string;
   updated_at: string;
   additional_info?: any;
+  validation_status?: string;
+  validated_at?: string;
+  validated_by?: string;
+  hold_at?: string;
+  hold_by?: string;
+  hold_noted?: string;
 }
 
 export interface Geofence {
@@ -67,6 +73,16 @@ export interface Trip {
   approaching_threshold: number,
   locations?: number[],
   metadata?: any,
+  started_location?: {
+    latitude: number;
+    longitude: number;
+  };
+  ended_location?: {
+    latitude: number;
+    longitude: number;
+  };
+  started_at?: string;
+  ended_at?: string;
 };
 
 export interface QueueItem {
