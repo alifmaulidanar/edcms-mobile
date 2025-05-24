@@ -33,7 +33,14 @@ export const startTicketNew = async (user_id: string, username: string, ticket_i
       handleError('Invalid geofence tag');
       throw new Error('Invalid geofence tag');
     }
-
+    if (!started_location) {
+      handleError('Invalid started location');
+      throw new Error('Invalid started location');
+    }
+    if (!started_at) {
+      handleError('Invalid started at');
+      throw new Error('Invalid started at');
+    }
     handleLog('Starting trip without Radar...');
 
     // Generate externalId for trip
@@ -71,6 +78,14 @@ export const stopTicketNew = async (ticket_id: string, ended_location?: [number,
       handleError('Invalid ticket ID');
       throw new Error('Invalid ticket ID');
     }
+    if (!ended_location) {
+      handleError('Invalid ended location');
+      throw new Error('Invalid ended location');
+    }
+    if (!ended_at) {
+      handleError('Invalid ended at');
+      throw new Error('Invalid ended at');
+    }
 
     // Get tripId from Supabase by ticketId
     const trip_id = await getTripIdByTicketId(ticket_id);
@@ -94,7 +109,7 @@ export const stopTicketNew = async (ticket_id: string, ended_location?: [number,
     }
 
     // Update ticket status to "completed" and duration di Supabase
-    await endTripNoRadar(trip_id, 'completed', duration, ended_location, ended_at);
+    await endTripNoRadar(trip_id, 'completed', ended_location, ended_at);
 
     // Update ticket status to "completed" in Supabase
     await updateTicket(ticket_id, trip_id, 'completed');

@@ -157,14 +157,14 @@ export const updateTrip = async (trip_id: string, status: string, duration: numb
 }
 
 // Ended trip without Radar
-export const endTripNoRadar = async (trip_id: string, status: string, duration: number, ended_location?: [number, number], ended_at?: string): Promise<void> => {
+export const endTripNoRadar = async (trip_id: string, status: string, ended_location?: [number, number], ended_at?: string): Promise<void> => {
   try {
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/trips/status/complete`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ trip_id, status, duration, ended_location, ended_at }),
+      body: JSON.stringify({ trip_id, status, ended_location, ended_at }),
     });
 
     if (!response.ok) {

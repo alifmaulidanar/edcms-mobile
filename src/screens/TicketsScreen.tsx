@@ -13,6 +13,8 @@ import { getSingleTicket, getTicketsWithGeofences } from "../api/tickets";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
 import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator } from "react-native";
+import { enqueueTicketAction } from '../utils/offlineQueue';
+import NetInfo from '@react-native-community/netinfo';
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
 
@@ -834,6 +836,8 @@ const TicketItem = React.memo(({
   selectTicket: (ticket: Ticket) => Promise<void>;
   index: number;
 }) => {
+  const navigation = useNavigation<any>();
+  const userData = useSelector((state: RootState) => state.user);
   const geofenceItem = geofenceLookup[ticket.geofence_id];
   const geofenceDescription = geofenceItem?.description || 'Loading location...';
 
@@ -882,6 +886,53 @@ const TicketItem = React.memo(({
 
   const createdAtFormatted = formatDate(ticket.created_at);
   const updatedAtFormatted = formatDate(ticket.updated_at);
+
+  // Handler for continuing stuck ticket
+  const handleContinueTicket = async () => {
+    Alert.alert(
+      'Lanjutkan Tiket',
+      'Apakah Anda ingin melanjutkan pengerjaan tiket ini?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Ya',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await AsyncStorage.setItem('selectedTicket', JSON.stringify(ticket));
+              // Use updated_at as start time for stopwatch
+              if (ticket.updated_at) {
+                const startTime = new Date(ticket.updated_at).getTime();
+                await AsyncStorage.setItem('startTime', startTime.toString());
+                console.log(`Melanjutkan tiket ${ticket.ticket_id} dengan start time: ${startTime}`);
+              }
+              // Tambahkan ke offline queue jika offline
+              const state = await NetInfo.fetch();
+              if (!state.isConnected) {
+                await enqueueTicketAction({
+                  type: 'start', // Gunakan 'start' karena queue hanya mengenal start/stop/cancel
+                  ticketId: ticket.ticket_id,
+                  data: {
+                    user_id: ticket.user_id,
+                    username: userData?.username || '',
+                    description: ticket.description,
+                    geofence_id: ticket.geofence_id,
+                    geofence_tag: geofenceItem?.tag || '',
+                    started_location: geofenceItem?.coordinates || [0, 0],
+                    started_at: ticket.updated_at,
+                  },
+                  createdAt: Date.now(),
+                });
+              }
+              navigation.navigate('Main');
+            } catch (error) {
+              alert('Gagal melanjutkan tiket. Silakan coba lagi.');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   return (
     <TouchableOpacity
@@ -951,6 +1002,31 @@ const TicketItem = React.memo(({
                   : "Pilih"}
             </Text>
           </TouchableOpacity>
+        )}
+        {/* Lanjutkan Tiket button for stuck on_progress tickets */}
+        {ticket.status === 'on_progress' && (
+          <>
+            <TouchableOpacity
+              onPress={handleContinueTicket}
+              style={{
+                backgroundColor: '#f59e42',
+                padding: 8,
+                borderRadius: 4,
+                marginTop: 8,
+                flexDirection: 'row',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Ionicons name="play" size={16} color="white" style={{ marginRight: 4 }} />
+              <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>
+                Lanjutkan Tiket
+              </Text>
+            </TouchableOpacity>
+            <Text className="text-sm text-center text-gray-400">
+              Pastikan tiket belum diperbaiki oleh Admin
+            </Text>
+          </>
         )}
       </View>
     </TouchableOpacity>

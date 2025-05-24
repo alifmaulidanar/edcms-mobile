@@ -19,8 +19,49 @@ import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
 import { startTicketNew, stopTicketNew, cancelTripNew } from "../utils/noRadar";
-import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, Platform } from "react-native";
-import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, hasPendingQueueItems } from '../utils/offlineQueue';
+import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from "react-native";
+import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, hasPendingQueueItems, TicketActionQueueItem } from '../utils/offlineQueue';
+import { Ionicons } from '@expo/vector-icons';
+import { getQueueContents, getExtrasQueueContents, clearTicketQueue, clearTicketExtrasQueue } from '../utils/offlineQueue';
+
+// New helper functions for AsyncStorage operations - add after imports
+
+/**
+ * Gets the selected ticket from AsyncStorage
+ * Used as the primary source of truth for selectedTicket
+ */
+const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
+  try {
+    const storedTicket = await AsyncStorage.getItem("selectedTicket");
+    if (storedTicket) {
+      const ticket = JSON.parse(storedTicket);
+      handleLog("Retrieved selectedTicket from AsyncStorage");
+      return ticket;
+    }
+    return null;
+  } catch (error: any) {
+    handleError(`Error retrieving selectedTicket from AsyncStorage: ${error}`);
+    return null;
+  }
+};
+
+/**
+ * Saves the selected ticket to AsyncStorage
+ * This should be called whenever the selectedTicket changes
+ */
+const setSelectedTicketToStorage = async (ticket: Ticket | null): Promise<void> => {
+  try {
+    if (ticket) {
+      await AsyncStorage.setItem("selectedTicket", JSON.stringify(ticket));
+      handleLog(`Saved selectedTicket to AsyncStorage: ${ticket.ticket_id}`);
+    } else {
+      await AsyncStorage.removeItem("selectedTicket");
+      handleLog("Removed selectedTicket from AsyncStorage");
+    }
+  } catch (error: any) {
+    handleError(`Error saving selectedTicket to AsyncStorage: ${error}`);
+  }
+};
 
 type RootStackParamList = {
   Login: undefined;
@@ -51,6 +92,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [hasPendingActions, setHasPendingActions] = useState(false);
   const [hasPendingExtras, setHasPendingExtras] = useState(false);
+  const [offlineLogModalVisible, setOfflineLogModalVisible] = useState(false);
+  const [offlineActionLog, setOfflineActionLog] = useState<TicketActionQueueItem[]>([]);
+  const [offlineExtrasLog, setOfflineExtrasLog] = useState<any[]>([]);
+  const [isLoadingOfflineLog, setIsLoadingOfflineLog] = useState(false);
+  const [offlinePhotoLog, setOfflinePhotoLog] = useState([]);
+  const [isLoadingOfflinePhotoLog, setIsLoadingOfflinePhotoLog] = useState(false);
   // const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   // const [currentDateField, setCurrentDateField] = useState<string>('');
 
@@ -128,7 +175,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [selectedTicket, geofence]);
 
-  // NEW optimized function that fetches tickets WITH their geofence data in one query
+  // Optimized function that fetches tickets WITH their geofence data in one query
+  // Updated to prioritize AsyncStorage for selectedTicket persistence
   const fetchTicketsWithGeofences = useCallback(async () => {
     try {
       if (!userData?.user_id) {
@@ -136,36 +184,126 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
 
+      // First, get stored ticket from AsyncStorage to ensure persistence
+      const storedTicket = await getSelectedTicketFromStorage();
+      if (tracking && storedTicket) {
+        return;
+      }
+
       const assignedTicketsWithGeofences = await getTicketsWithGeofences(userData.user_id, 'assigned');
+      let ticketsData: Ticket[] = [];
+      let geofencesData: Geofence[] = [];
       if (assignedTicketsWithGeofences.length > 0) {
-        const ticketsData = assignedTicketsWithGeofences.map(item => {
+        ticketsData = assignedTicketsWithGeofences.map(item => {
           const { geofence_data, ...ticketOnly } = item;
           return ticketOnly;
         });
-        const geofencesData = assignedTicketsWithGeofences
-          .filter(item => item.geofence_data) // Only include tickets that have geofence data
+        geofencesData = assignedTicketsWithGeofences
+          .filter(item => item.geofence_data)
           .map(item => item.geofence_data);
-        setTickets(ticketsData);
-        setGeofence(geofencesData);
-        handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);
-      } else {
-        handleLog("No assigned tickets found");
+      }
+      setTickets(ticketsData);
+      setGeofence(geofencesData);
+      handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);      // --- Advanced logic for selectedTicket persistence ---
+
+      // Case 1: If we're in any critical operation, don't touch selectedTicket at all
+      if (tracking || multiPhasePhotoModalVisible || ticketExtrasModalVisible) {
+        handleLog("Critical operation in progress - preserving selectedTicket state");
+        return;
+      }
+
+      // Case 2: If we have a stored ticket from AsyncStorage, prioritize it
+      if (storedTicket) {
+        // Check if the ticket from AsyncStorage still exists in the fetched tickets
+        const storedTicketExists = ticketsData.some(t => t.ticket_id === storedTicket.ticket_id);
+        if (storedTicketExists) {
+          // Use the latest ticket data but keep the same ID
+          const updatedTicket = ticketsData.find(t => t.ticket_id === storedTicket.ticket_id);
+          if (updatedTicket) {
+            // Always update the state with the latest data from API to ensure we have current status
+            handleLog(`Restoring selectedTicket from AsyncStorage: ${storedTicket.ticket_id}`);
+            // Only update if there's actual data changes to avoid infinite loops
+            if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
+              setSelectedTicket(updatedTicket);
+              setCurrentTicketID(updatedTicket.ticket_id);
+              // Save the updated ticket back to storage to keep it in sync
+              await setSelectedTicketToStorage(updatedTicket);
+            }
+          }
+        } else if (!tracking) {
+          // If the stored ticket no longer exists and we're not tracking, clear it
+          handleLog("Stored ticket no longer exists and not tracking - clearing selectedTicket");
+          setSelectedTicket(null);
+          setCurrentTicketID(null);
+          await setSelectedTicketToStorage(null);
+        }
+        return;
+      }
+      // Case 3: No stored ticket, but we have selectedTicket in state
+      if (selectedTicket) {
+        const ticketStillExists = ticketsData.some(t => t.ticket_id === selectedTicket.ticket_id);
+        if (ticketStillExists) {
+          // Get the updated ticket data
+          const updatedTicket = ticketsData.find(t => t.ticket_id === selectedTicket.ticket_id);
+          if (updatedTicket) {
+            // Only update if there are actual changes to avoid infinite loops
+            if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
+              // Update state with latest data and save to storage
+              setSelectedTicket(updatedTicket);
+              await setSelectedTicketToStorage(updatedTicket);
+              handleLog(`Updated selectedTicket data and saved to storage: ${updatedTicket.ticket_id}`);
+            }
+          }
+        } else if (!tracking) {
+          // If the ticket no longer exists and we're not tracking, clear everything
+          handleLog("selectedTicket no longer exists in tickets list and not tracking - clearing state and storage");
+          setSelectedTicket(null);
+          setCurrentTicketID(null);
+          await setSelectedTicketToStorage(null);
+        }
       }
     } catch (error: any) {
       handleError(`Error in optimized fetch: ${error.message}`);
     }
-  }, [userData]);
+  }, [userData, tracking, multiPhasePhotoModalVisible, ticketExtrasModalVisible]);
 
   // Fetch tickets using the optimized method
   useEffect(() => {
-    fetchTicketsWithGeofences();
-  }, [fetchTicketsWithGeofences]);
-
-  // Handle pull-to-refresh with optimized approach
+    let isMounted = true;
+    const fetchData = async () => {
+      // Only fetch if component is still mounted
+      if (isMounted) {
+        await fetchTicketsWithGeofences();
+        // Verify selected ticket still exists
+        if (tracking && selectedTicket) {
+          const stillExists = tickets.some((t) => t.ticket_id === selectedTicket.ticket_id);
+          if (!stillExists) {
+            console.log("Selected ticket no longer exists in the list");
+          }
+        }
+      }
+    };
+    // Initial fetch
+    fetchData();
+    // Set up an interval to refresh data periodically rather than on every change
+    const refreshInterval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    return () => {
+      isMounted = false;
+      clearInterval(refreshInterval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracking]); // Only re-run when tracking status changes
+  // Handle pull-to-refresh with improved selectedTicket persistence
   const onRefresh = async () => {
+    // Disable refresh if tracking, submitting extras, or capturing photos
+    if (tracking || isSubmittingTicketExtras || multiPhasePhotoModalVisible) return;
     setIsRefreshing(true);
-    setSelectedTicket(null);
-    setCurrentTicketID(null);
+    // Save selectedTicket to storage before refresh if it exists
+    if (selectedTicket) {
+      await setSelectedTicketToStorage(selectedTicket);
+    }
+    // Fetch new data - the fetchTicketsWithGeofences function now handles
+    // selectedTicket persistence using AsyncStorage as the source of truth
     await fetchTicketsWithGeofences();
     setIsRefreshing(false);
   };
@@ -204,6 +342,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
       if (!isConnected) {
+        const startTime = Date.now();
+        await AsyncStorage.setItem("startTime", startTime.toString());
+        // Use our helper function for more consistent handling
+        await setSelectedTicketToStorage(selectedTicket);
         await enqueueTicketAction({
           type: 'start',
           ticketId: selectedTicket.ticket_id,
@@ -218,13 +360,15 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           },
           createdAt: Date.now(),
         });
+        handleLog('Trip started (async)');
         setTracking(true); // Optimistic UI
         return;
       }
       // Online: process directly
       const startTime = Date.now();
       await AsyncStorage.setItem("startTime", startTime.toString());
-      await AsyncStorage.setItem("selectedTicket", JSON.stringify(selectedTicket));
+      // Use our helper function for more consistent handling
+      await setSelectedTicketToStorage(selectedTicket);
       const started_at = new Date().toISOString(); // ISO format for timestampz
       await startTicketNew(
         userData?.user_id || '',
@@ -307,7 +451,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           await cancelTripNew(selectedTicket.ticket_id);
         }
         await AsyncStorage.removeItem("startTime");
-        await AsyncStorage.removeItem("selectedTicket");
+        // Use our helper function instead of direct AsyncStorage call
+        await setSelectedTicketToStorage(null);
         setTracking(false); // Reset state
         setSelectedTicket(null);
         setTime(0);
@@ -383,21 +528,30 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       if (interval) clearInterval(interval); // Clear interval when component unmounts
     };
   }, [tracking]);
-
+  // Load tracking data and selected ticket from storage when component mounts
   useEffect(() => {
     const loadTrackingData = async () => {
       try {
+        // Get stored tracking time
         const storedStartTime = await AsyncStorage.getItem("startTime");
-        const storedTicket = await AsyncStorage.getItem("selectedTicket");
+
+        // Use our helper function to get stored ticket
+        const storedTicket = await getSelectedTicketFromStorage();
+
         if (storedStartTime && storedTicket) {
+          // We're actively tracking a ticket
           const startTime = parseInt(storedStartTime, 10);
           const elapsed = Math.floor((Date.now() - startTime) / 1000); // Time elapsed in seconds
           setTime(elapsed);
-          setSelectedTicket(JSON.parse(storedTicket));
+          setSelectedTicket(storedTicket);
+          setCurrentTicketID(storedTicket.ticket_id);
           setTracking(true);
+          handleLog(`Restored active tracking for ticket: ${storedTicket.ticket_id}`);
         } else if (storedTicket) {
-          setSelectedTicket(JSON.parse(storedTicket));
-          handleLog("Tiket dipilih dari halaman Tiket");
+          // We have a selected ticket but not tracking
+          setSelectedTicket(storedTicket);
+          setCurrentTicketID(storedTicket.ticket_id);
+          handleLog(`Restored selected ticket from storage: ${storedTicket.ticket_id}`);
         }
       } catch (error: any) {
         handleError(`Error loading tracking data: ${error}`);
@@ -654,8 +808,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       setIsCompleting(false);
       setSelectedTicket(null);
 
-      // Clear storage
-      await AsyncStorage.removeItem("selectedTicket");
+      // Clear storage using our helper function for consistency
+      await setSelectedTicketToStorage(null);
       await AsyncStorage.removeItem("startTime");
       setFormData({
         // EDC DETAILS
@@ -854,12 +1008,44 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const loadOfflineLog = async () => {
+    setIsLoadingOfflineLog(true);
+    setIsLoadingOfflinePhotoLog(true);
+    try {
+      const actions = await getQueueContents();
+      const extras = await getExtrasQueueContents();
+      setOfflineActionLog(actions);
+      setOfflineExtrasLog(extras);
+      // Load photo upload queue
+      const rawPhotoQueue = await AsyncStorage.getItem('uploadQueue');
+      setOfflinePhotoLog(rawPhotoQueue ? JSON.parse(rawPhotoQueue) : []);
+    } catch (e) {
+      setOfflineActionLog([]);
+      setOfflineExtrasLog([]);
+      setOfflinePhotoLog([]);
+    }
+    setIsLoadingOfflineLog(false);
+    setIsLoadingOfflinePhotoLog(false);
+  };
+
+  const handleOpenOfflineLog = async () => {
+    await loadOfflineLog();
+    setOfflineLogModalVisible(true);
+  };
+
+  // const handleClearOfflineLog = async () => {
+  //   await clearTicketQueue();
+  //   await clearTicketExtrasQueue();
+  //   await AsyncStorage.removeItem('uploadQueue');
+  //   await loadOfflineLog();
+  // };
+
   return (
     <ScrollView
       className='bg-[#f5f5f5] p-6 mt-4'
       contentContainerStyle={{ flexGrow: 1 }}
       refreshControl={
-        !tracking ? (
+        !(tracking || isSubmittingTicketExtras || multiPhasePhotoModalVisible) ? (
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         ) : undefined
       }
@@ -873,65 +1059,168 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Internet Status Badge */}
-      <View className="mt-4">
-        {hasPendingActions && (
-          <Text className="px-2 py-1 mb-1 text-xs text-center text-yellow-700 bg-yellow-200 rounded-full">Ada aksi tiket yang tertunda, akan disinkronkan saat online</Text>
-        )}
-        {hasPendingExtras && (
-          <Text className="px-2 py-1 mb-1 text-xs text-center text-yellow-700 bg-yellow-200 rounded-full">Ada berita acara yang tertunda, akan disinkronkan saat online</Text>
-        )}
-        <Text className={`text-sm font-bold text-center py-2 px-4 rounded-full ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-          {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
-        </Text>
+      <View className="flex-row items-center justify-between mt-4">
+        <View style={{ flex: 1 }}>
+          {hasPendingActions && (
+            <Text className="px-2 py-1 mb-1 text-xs text-center text-yellow-700 bg-yellow-200 rounded-full">Ada aksi tiket yang tertunda, akan disinkronkan saat online</Text>
+          )}
+          {hasPendingExtras && (
+            <Text className="px-2 py-1 mb-1 text-xs text-center text-yellow-700 bg-yellow-200 rounded-full">Ada berita acara yang tertunda, akan disinkronkan saat online</Text>
+          )}
+          <Text className={`text-sm font-bold text-center py-2 px-4 rounded-full ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+            {isConnected ? 'Koneksi Internet Stabil' : 'Tidak Ada Koneksi Internet'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={handleOpenOfflineLog}
+          className="p-2 ml-2 bg-gray-200 rounded-full"
+          style={{ alignSelf: 'flex-start' }}
+          accessibilityLabel="Lihat Riwayat Offline"
+        >
+          <Ionicons name="time-outline" size={24} color="#f59e42" />
+        </TouchableOpacity>
       </View>
 
-      {/* Tickets Dropdown */}
-      <View className="mt-4">
-        <View className="flex-row items-center mb-2">
-          <Text className="mr-2 text-lg font-bold">
-            Pilih Tiket yang Tersedia
-          </Text>
-          <View className="px-3 py-1 bg-blue-500 rounded-full">
-            <Text className="text-sm font-bold text-white">
-              {tickets.filter((ticket) => ticket.status === 'assigned').length} tiket
-            </Text>
+      {/* Offline History Log Modal */}
+      <Modal
+        visible={offlineLogModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setOfflineLogModalVisible(false)}
+      >
+        <View className="items-center justify-center flex-1 px-4 bg-black/60">
+          <View className="w-full max-w-lg p-6 bg-white rounded-lg">
+            <Text className="mb-8 text-xl font-bold text-center">Riwayat Offline Mode</Text>
+            {/* <Text className="mb-4 text-sm text-center text-gray-600">Berikut adalah daftar aksi tiket dan berita acara yang pernah diproses secara offline dan akan/berhasil disinkronkan ke server.</Text> */}
+            <ScrollView style={{ maxHeight: 400 }}>
+              <Text className="mb-2 font-bold text-gray-700">Aksi Tiket (Start/Stop/Cancel):</Text>
+              {isLoadingOfflineLog ? (
+                <ActivityIndicator color="#059669" />
+              ) : offlineActionLog.length === 0 ? (
+                <Text className="mb-2 text-gray-500">Tidak ada aksi offline.</Text>
+              ) : (
+                offlineActionLog.map((item, idx) => (
+                  <View key={idx} className="p-2 mb-2 bg-gray-100 rounded">
+                    <Text className="text-xs text-gray-700">[{item.type?.toUpperCase()}] Ticket ID: {item.ticketId}</Text>
+                    <Text className="text-xs text-gray-500">Waktu: {item.createdAt ? moment(item.createdAt).format('DD/MM/YYYY HH:mm:ss') : '-'}</Text>
+                    <Text className="text-xs text-gray-500">Percobaan: {item.attempts || 0}</Text>
+                  </View>
+                ))
+              )}
+              <Text className="mt-4 mb-2 font-bold text-gray-700">Berita Acara (Extras):</Text>
+              {isLoadingOfflineLog ? (
+                <ActivityIndicator color="#059669" />
+              ) : offlineExtrasLog.length === 0 ? (
+                <Text className="mb-2 text-gray-500">Tidak ada berita acara offline.</Text>
+              ) : (
+                offlineExtrasLog.map((item, idx) => (
+                  <View key={idx} className="p-2 mb-2 bg-gray-100 rounded">
+                    <Text className="text-xs text-gray-700">[EXTRAS] Ticket ID: {item.ticketId}</Text>
+                    <Text className="text-xs text-gray-500">Waktu: {item.createdAt ? moment(item.createdAt).format('DD/MM/YYYY HH:mm:ss') : '-'}</Text>
+                    <Text className="text-xs text-gray-500">Percobaan: {item.attempts || 0}</Text>
+                  </View>
+                ))
+              )}
+              <Text className="mt-4 mb-2 font-bold text-gray-700">Upload Foto (Background):</Text>
+              {isLoadingOfflinePhotoLog ? (
+                <ActivityIndicator color="#059669" />
+              ) : offlinePhotoLog.length === 0 ? (
+                <Text className="mb-2 text-gray-500">Tidak ada upload foto offline.</Text>
+              ) : (
+                (offlinePhotoLog as any[]).map((item, idx) => (
+                  <View key={idx} className="p-2 mb-2 bg-gray-100 rounded">
+                    <Text className="text-xs text-gray-700">[UPLOAD] Ticket ID: {item.ticket_id}</Text>
+                    <Text className="text-xs text-gray-500">User: {item.user_id}</Text>
+                    <Text className="text-xs text-gray-500">Jumlah Foto: {item.photos?.length || 0}</Text>
+                    <Text className="text-xs text-gray-500">Percobaan: {item.attempts || 0}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <View className="flex-row justify-between mt-6">
+              <TouchableOpacity
+                onPress={() => setOfflineLogModalVisible(false)}
+                className="px-6 py-3 bg-gray-300 rounded-lg"
+              >
+                <Text className="text-sm font-semibold text-gray-700">Tutup</Text>
+              </TouchableOpacity>
+              {/* <TouchableOpacity
+                onPress={handleClearOfflineLog}
+                className="px-6 py-3 bg-red-500 rounded-lg"
+              >
+                <Text className="text-sm font-semibold text-white">Bersihkan Log</Text>
+              </TouchableOpacity> */}
+            </View>
           </View>
         </View>
-        <View style={{ maxHeight: 100, overflow: 'hidden' }}>
-          <ScrollView>
-            <Picker
-              mode="dialog"
-              selectedValue={selectedTicket?.id || null}
-              onValueChange={(value: any) => {
-                const ticket = tickets.find((t) => t.id === value);
-                setSelectedTicket(ticket || null);
-                setCurrentTicketID(ticket?.ticket_id || null);
-              }}
-              style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
-            >
-              <Picker.Item label="Pilih tiket..." value={null} />
-              {tickets
-                .filter((ticket) => ticket.status === 'assigned')
-                .map((ticket) => {
+      </Modal>
+
+      {/* Tickets Dropdown */}
+      {!tracking && (
+        <View className="mt-4">
+          <View className="flex-row items-center mb-2">
+            <Text className="mr-2 text-lg font-bold">
+              Pilih Tiket yang Tersedia
+            </Text>
+            <View className="px-3 py-1 bg-blue-500 rounded-full">
+              <Text className="text-sm font-bold text-white">
+                {tickets.filter((ticket) => ticket.status === 'assigned').length} tiket
+              </Text>
+            </View>
+          </View>
+          <View style={{ maxHeight: 100, overflow: 'hidden' }}>
+            <ScrollView>
+              <Picker
+                mode="dialog"
+                selectedValue={selectedTicket?.ticket_id || null}
+                onValueChange={async (value: any) => {
+                  try {
+                    if (tracking || isSubmittingTicketExtras || multiPhasePhotoModalVisible) return; // Prevent change if not safe
+                    if (value) {
+                      const ticket = tickets.find((t) => t.ticket_id === value);
+                      if (ticket) {
+                        // Update both state and AsyncStorage
+                        setSelectedTicket(ticket);
+                        setCurrentTicketID(ticket.ticket_id);
+                        await setSelectedTicketToStorage(ticket);
+                        handleLog(`Ticket selected and saved to storage: ${ticket.ticket_id}`);
+                      }
+                    } else {
+                      // Clear both state and AsyncStorage
+                      setSelectedTicket(null);
+                      setCurrentTicketID(null);
+                      await setSelectedTicketToStorage(null);
+                      handleLog('Ticket selection cleared from state and storage');
+                    }
+                  } catch (error: any) {
+                    handleError(`Error during ticket selection: ${error}`);
+                    onRefresh();
+                  }
+                }}
+                style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                enabled={!(tracking || isSubmittingTicketExtras || multiPhasePhotoModalVisible)} // Disable picker if tracking or in critical state
+              >
+                <Picker.Item label="Pilih tiket..." value={null} />
+                {tickets.filter((ticket) => ticket.status === 'assigned').map((ticket) => {
                   const geofence_obj = geofenceLookup[ticket.geofence_id];
                   const geofenceDescription = geofence_obj?.description || ticket.description;
-                  // Truncate description to max 20 characters plus ellipsis
-                  const truncatedDescription = geofenceDescription.length > 20
+                  const truncatedDescription = geofenceDescription && geofenceDescription.length > 20
                     ? geofenceDescription.substring(0, 25) + '...'
                     : geofenceDescription;
                   return (
                     <Picker.Item
                       style={{ fontSize: 12 }}
-                      key={ticket.id}
+                      key={ticket.ticket_id}
                       label={`${truncatedDescription} - ${ticket?.additional_info?.tipe_tiket || ""} - TID: ${ticket?.additional_info?.tid || ''}`}
-                      value={ticket.id}
+                      value={ticket.ticket_id}
                     />
                   );
                 })}
-            </Picker>
-          </ScrollView>
+              </Picker>
+            </ScrollView>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Ticket Extras Detail Modal */}
       <Modal
@@ -2146,7 +2435,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </Text>
             )}
 
-            {!tracking && selectedTicket && (
+            {tracking && (
+              <View className="z-10 gap-y-2">
+                <Text className="my-4 text-xl text-center">{formatTime(time)}</Text>
+              </View>
+            )}
+            {selectedTicket && (
               <View className="z-10 gap-y-2">
                 <Text className="text-center text-gray-600">
                   <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id ?? '-'}
@@ -2247,9 +2541,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             )}
           </View>
-          {tracking && (
-            <Text className="mb-4 text-xl text-center">{formatTime(time)}</Text>
-          )}
 
           {/* <View className="z-20 flex-row items-center justify-center w-full gap-x-2"> */}
           {/* <TouchableOpacity
