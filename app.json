@@ -2,7 +2,7 @@
   "expo": {
     "name": "PastiMS EDC",
     "slug": "pastims-edc",
-    "version": "1.4.1",
+    "version": "1.4.3",
     "orientation": "portrait",
     "icon": "./assets/logo/mdm-logo.png",
     "userInterfaceStyle": "light",

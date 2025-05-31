@@ -222,6 +222,7 @@ const TicketsScreen = () => {
     const [sortKey, setSortKey] = useState("updated_at"); // Sort state
     const [sortOrder, setSortOrder] = useState("desc"); // Sort order state
     const [filterKey, setFilterKey] = useState(""); // Filter state
+    const [ticketTypeFilter, setTicketTypeFilter] = useState("all"); // Ticket Type filter state
     const [pageSize] = useState(20); // Number of items to display per page
     const [currentPage, setCurrentPage] = useState(1); // Current page number
     const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more indicator
@@ -229,7 +230,7 @@ const TicketsScreen = () => {
     // Reset pagination when tickets or filters change
     useEffect(() => {
       setCurrentPage(1);
-    }, [tickets, searchText, sortKey, sortOrder, filterKey]);
+    }, [tickets, searchText, sortKey, sortOrder, filterKey, ticketTypeFilter]);
 
     // Filtered and sorted tickets
     const filteredAndSortedTickets = useMemo(() => {
@@ -248,6 +249,13 @@ const TicketsScreen = () => {
         );
       }
 
+      // Filter by ticket type
+      if (ticketTypeFilter !== "all") {
+        filtered = filtered.filter((ticket: any) =>
+          ticket.additional_info?.tipe_tiket === ticketTypeFilter
+        );
+      }
+
       // Filter by custom key
       if (filterKey) {
         filtered = filtered.filter((ticket: any) => ticket.status === filterKey);
@@ -263,7 +271,7 @@ const TicketsScreen = () => {
         return valueA > valueB ? -1 : 1;
       });
       return sorted;
-    }, [tickets, searchText, sortKey, sortOrder, filterKey]);
+    }, [tickets, searchText, sortKey, sortOrder, filterKey, ticketTypeFilter, geofenceLookup]);
 
     // Get paginated data
     const paginatedTickets = useMemo(() => {
@@ -307,33 +315,52 @@ const TicketsScreen = () => {
             margin: 8,
           }}
         />
-
-        {/* Sort and Filter Controls */}
-        <View className="flex-row items-center justify-between p-4 mx-2 mb-2 bg-white rounded-lg">
-          <View className="flex-1 mr-2 gap-y-2">
-            {/* <Text className="text-sm font-medium text-gray-600">Urutkan berdasarkan:</Text> */}
-            <View className="justify-center h-12 bg-white border border-gray-300 rounded-lg">
+        {/* Sort and Filter Controls - Compact Layout */}
+        <View className="flex-row items-center justify-between py-2 mx-2 mb-2 bg-white rounded-lg">
+          <View className="flex-1 mx-0.5 gap-y-1">
+            <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Urutkan</Text>
+            <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
               <Picker
                 selectedValue={sortKey}
                 onValueChange={(value) => setSortKey(value)}
                 className="bg-white rounded-lg"
+                itemStyle={{ fontSize: 12, height: 120 }}
               >
-                <Picker.Item label="Tanggal Dibuat" value="created_at" />
-                <Picker.Item label="Tanggal Selesai" value="updated_at" />
+                <Picker.Item label="Tgl Dibuat" value="created_at" />
+                <Picker.Item label="Tgl Selesai" value="updated_at" />
                 <Picker.Item label="Deskripsi" value="description" />
               </Picker>
             </View>
           </View>
-          <View className="flex-1 ml-2 gap-y-2">
-            {/* <Text className="text-sm font-medium text-gray-600">Urutan:</Text> */}
-            <View className="justify-center h-12 bg-white border border-gray-300 rounded-lg">
+          <View className="flex-1 mx-0.5 gap-y-1">
+            <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Urutan</Text>
+            <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
               <Picker
                 selectedValue={sortOrder}
                 onValueChange={(value) => setSortOrder(value)}
                 className="bg-white rounded-lg"
+                itemStyle={{ fontSize: 12, height: 120 }}
               >
                 <Picker.Item label="Menurun" value="desc" />
                 <Picker.Item label="Menaik" value="asc" />
+              </Picker>
+            </View>
+          </View>
+          <View className="flex-1 mx-0.5 gap-y-1">
+            <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Kategori Tiket</Text>
+            <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
+              <Picker
+                selectedValue={ticketTypeFilter}
+                onValueChange={(value) => setTicketTypeFilter(value)}
+                className="bg-white rounded-lg"
+                itemStyle={{ fontSize: 12, height: 120 }}
+              >
+                <Picker.Item label="Semua" value="all" />
+                <Picker.Item label="CM Visit / VTI" value="CM Visit" />
+                <Picker.Item label="Installation" value="Installation" />
+                <Picker.Item label="Preventive Maintenance / PM" value="PM" />
+                <Picker.Item label="Pull Out" value="Pull Out" />
+                <Picker.Item label="Replacement" value="Replacement" />
               </Picker>
             </View>
           </View>
@@ -857,6 +884,25 @@ const TicketItem = React.memo(({
   const geofenceItem = geofenceLookup[ticket.geofence_id];
   const geofenceDescription = geofenceItem?.description || 'Loading location...';
 
+  // Function to get color based on ticket type
+  const getTicketTypeColor = (ticketType: string) => {
+    switch (ticketType) {
+      case 'CM Visit':
+      case 'VTI':
+        return '#4F46E5'; // Indigo
+      case 'Installation':
+        return '#0EA5E9'; // Sky blue
+      case 'PM':
+        return '#10B981'; // Green
+      case 'Pull Out':
+        return '#F59E0B'; // Amber
+      case 'Replacement':
+        return '#EF4444'; // Red
+      default:
+        return '#6B7280'; // Gray
+    }
+  };
+
   // Badge color and label for validation_status
   let validationBadge = null;
   if (index === 2) {
@@ -975,90 +1021,109 @@ const TicketItem = React.memo(({
       <View>
         {/* Badge for most recent on_progress ticket */}
         {index === 1 && mostRecentOnProgressId === ticket.ticket_id && (
-          <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, zIndex: 10 }}>
+          <View style={{ position: 'absolute', top: 0, right: 0, backgroundColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, zIndex: 10 }}>
             <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>Terbaru</Text>
           </View>
         )}
-        <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
-        <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
-        <Text style={{ fontWeight: "500", color: "#4B5563" }}>
-          {geofenceDescription}
-        </Text>
-        <Text style={{ fontWeight: "500" }}>MID: {ticket.additional_info?.mid || '-'}</Text>
-        <Text style={{ fontWeight: "500" }}>TID: {ticket.additional_info?.tid || '-'}</Text>
-        <Text style={{ fontWeight: "500" }}>Tipe Tiket: {ticket.additional_info?.tipe_tiket || '-'}</Text>
-        <Text style={{ fontWeight: "500" }}>EDC Service: {ticket.additional_info?.edc_service || '-'}</Text>
-        <Text style={{ color: "gray" }}>
-          Dibuat: {createdAtFormatted}
-        </Text>
-        {(index === 1 || index === 3) && (
-          <Text style={{ color: "gray" }}>
-            Diperbarui: {updatedAtFormatted}
-          </Text>
-        )}
-        {index === 2 && (
-          <Text style={{ color: "gray" }}>
-            Selesai: {updatedAtFormatted}
-          </Text>
-        )}
-        {/* Validation Status Badge */}
-        {validationBadge}
-        {ticket.status === "assigned" && (
-          <TouchableOpacity
-            onPress={() => isAnyTicketInProgress ? null : selectTicket(ticket)}
-            disabled={isAnyTicketInProgress}
-            style={{
-              backgroundColor: isAnyTicketInProgress
-                ? "#9ca3af" // Abu-abu ketika disabled
-                : selectedTicketId === ticket.ticket_id
-                  ? "#22c55e"
-                  : "#3B82F6",
-              padding: 8,
-              borderRadius: 4,
-              marginTop: 8,
-              flexDirection: 'row',
-              justifyContent: 'center',
-              alignItems: 'center',
-              opacity: isAnyTicketInProgress ? 0.6 : 1,
-            }}
-          >
-            {selectedTicketId === ticket.ticket_id && !isAnyTicketInProgress && (
-              <Ionicons name="checkmark-circle" size={16} color="white" style={{ marginRight: 4 }} />
-            )}
-            <Text style={{ color: "white", textAlign: "center" }}>
-              {isAnyTicketInProgress
-                ? "Tidak tersedia (tiket sedang berjalan)"
-                : selectedTicketId === ticket.ticket_id
-                  ? "Terpilih (Klik untuk Batal)"
-                  : "Pilih"}
+        {/* Ticket Type Badge */}
+        {ticket.additional_info?.tipe_tiket && (
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            right: index === 1 && mostRecentOnProgressId === ticket.ticket_id ? 75 : 0,
+            backgroundColor: getTicketTypeColor(ticket.additional_info.tipe_tiket),
+            borderTopRightRadius: (index === 1 && mostRecentOnProgressId === ticket.ticket_id) ? 8 : 0,
+            borderBottomLeftRadius: 8,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            zIndex: 10
+          }}>
+            <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>
+              {ticket.additional_info.tipe_tiket}
             </Text>
-          </TouchableOpacity>
+          </View>
         )}
-        {/* Lanjutkan Tiket button for stuck on_progress tickets */}
-        {ticket.status === 'on_progress' && (
-          <>
+        <View style={{ marginTop: 10 }}>
+          <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
+          <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
+          <Text style={{ fontWeight: "500", color: "#4B5563" }}>
+            {geofenceDescription}
+          </Text>
+          <Text style={{ fontWeight: "500" }}>MID: {ticket.additional_info?.mid || '-'}</Text>
+          <Text style={{ fontWeight: "500" }}>TID: {ticket.additional_info?.tid || '-'}</Text>
+          <Text style={{ fontWeight: "500" }}>EDC Service: {ticket.additional_info?.edc_service || '-'}</Text>
+          <Text style={{ color: "gray" }}>
+            Dibuat: {createdAtFormatted}
+          </Text>
+          {(index === 1 || index === 3) && (
+            <Text style={{ color: "gray" }}>
+              Diperbarui: {updatedAtFormatted}
+            </Text>
+          )}
+          {index === 2 && (
+            <Text style={{ color: "gray" }}>
+              Selesai: {updatedAtFormatted}
+            </Text>
+          )}
+          {/* Validation Status Badge */}
+          {validationBadge}
+          {ticket.status === "assigned" && (
             <TouchableOpacity
-              onPress={handleContinueTicket}
+              onPress={() => isAnyTicketInProgress ? null : selectTicket(ticket)}
+              disabled={isAnyTicketInProgress}
               style={{
-                backgroundColor: '#f59e42',
+                backgroundColor: isAnyTicketInProgress
+                  ? "#9ca3af" // Abu-abu ketika disabled
+                  : selectedTicketId === ticket.ticket_id
+                    ? "#22c55e"
+                    : "#3B82F6",
                 padding: 8,
                 borderRadius: 4,
                 marginTop: 8,
                 flexDirection: 'row',
                 justifyContent: 'center',
                 alignItems: 'center',
+                opacity: isAnyTicketInProgress ? 0.6 : 1,
               }}
             >
-              <Ionicons name="play" size={16} color="white" style={{ marginRight: 4 }} />
-              <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>
-                Lanjutkan Tiket
+              {selectedTicketId === ticket.ticket_id && !isAnyTicketInProgress && (
+                <Ionicons name="checkmark-circle" size={16} color="white" style={{ marginRight: 4 }} />
+              )}
+              <Text style={{ color: "white", textAlign: "center" }}>
+                {isAnyTicketInProgress
+                  ? "Tidak tersedia (tiket sedang berjalan)"
+                  : selectedTicketId === ticket.ticket_id
+                    ? "Terpilih (Klik untuk Batal)"
+                    : "Pilih"}
               </Text>
             </TouchableOpacity>
-            <Text className="text-sm text-center text-gray-400">
-              Pastikan tiket belum diperbaiki oleh Admin
-            </Text>
-          </>
-        )}
+          )}
+          {/* Lanjutkan Tiket button for stuck on_progress tickets */}
+          {ticket.status === 'on_progress' && (
+            <>
+              <TouchableOpacity
+                onPress={handleContinueTicket}
+                style={{
+                  backgroundColor: '#f59e42',
+                  padding: 8,
+                  borderRadius: 4,
+                  marginTop: 8,
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <Ionicons name="play" size={16} color="white" style={{ marginRight: 4 }} />
+                <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>
+                  Lanjutkan Tiket
+                </Text>
+              </TouchableOpacity>
+              <Text className="text-sm text-center text-gray-400">
+                Pastikan tiket belum diperbaiki oleh Admin
+              </Text>
+            </>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
