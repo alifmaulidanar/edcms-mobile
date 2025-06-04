@@ -103,11 +103,12 @@ export const getUserLocationInfo = async (location: any, forceRefresh: boolean =
       longitude,
       jalan: address.road || '-',
       kelurahan: address.neighbourhood || '-',
-      kecamatan: address.suburb || '-',
-      kota: address.city || '-',
-      provinsi: address.region || '-',
+      kecamatan: address.suburb || address.village || '-',
+      kota: address.city || address.county || '-',
+      provinsi: address.region || address.state || '-',
       kode_pos: address.postcode || '-',
       negara: address.country || '-',
+      formattedAddress: data.display_name || '-'
     };
 
     // Store in cache
@@ -157,7 +158,8 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
         kota: '[no internet]',
         kode_pos: '[no internet]',
         provinsi: '[no internet]',
-        negara: '[no internet]'
+        negara: '[no internet]',
+        formattedAddress: '[no internet]'
       };
     }
 
@@ -185,7 +187,8 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
       `${userInfo.kota}`,
       `${userInfo.kode_pos}`,
       `${userInfo.provinsi}`,
-      `${userInfo.negara}`
+      `${userInfo.negara}`,
+      `${'formattedAddress' in userInfo ? userInfo.formattedAddress : '-'}`
     ];
     handleLog(`Menambahkan timestamp ke foto`);
 

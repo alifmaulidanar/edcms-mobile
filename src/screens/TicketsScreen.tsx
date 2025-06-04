@@ -37,6 +37,23 @@ const openInGoogleMaps = (coordinates: [number, number]) => {
   );
 };
 
+const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
+  if (!ticket || !ticket?.additional_info) return "default";
+  const tipeTiket = (ticket?.additional_info?.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
+  const edcService = (ticket?.additional_info?.edc_service || "").toString().toLowerCase();
+
+  if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
+    return "pullout";
+  }
+  if (edcService.includes("sharing")) {
+    return "sharing";
+  }
+  if (edcService.includes("single")) {
+    return "single";
+  }
+  return "default";
+};
+
 const TicketsScreen = () => {
   const navigation = useNavigation();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -51,12 +68,88 @@ const TicketsScreen = () => {
   const [index, setIndex] = useState(0);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isAnyTicketInProgress, setIsAnyTicketInProgress] = useState(false);
+  const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [routes] = useState([
     { key: "active", title: "Aktif" },
     { key: "on_progress", title: "Berjalan" },
     { key: "complete", title: "Selesai" },
     { key: "canceled", title: "Batal" },
   ]);
+
+  // Photo configuration based on ticket type
+  const TICKET_CONFIG = {
+    pullout: {
+      TOTAL_PHASES: 1,
+      PHOTOS_PER_PHASE: [4],
+      TOTAL_PHOTOS: 4,
+      photoTitles: [
+        'Foto EDC',
+        'Foto BAST',
+        'Foto PIC Merchant',
+        'Foto Struk #1',
+      ]
+    },
+    single: {
+      TOTAL_PHASES: 2,
+      PHOTOS_PER_PHASE: [4, 4],
+      TOTAL_PHOTOS: 8,
+      photoTitles: [
+        'Foto Plang',
+        'Foto EDC',
+        'Foto SIM Card + SN EDC + SAM Card',
+        'Foto Roll Sales Draft',
+        'Foto Sales Draft',
+        'Foto BAST',
+        'Foto Surat Pernyataan Training',
+        'Foto PIC Merchant',
+      ]
+    },
+    default: {
+      TOTAL_PHASES: 2,
+      PHOTOS_PER_PHASE: [4, 4],
+      TOTAL_PHOTOS: 8,
+      photoTitles: [
+        'Foto Plang',
+        'Foto EDC',
+        'Foto SIM Card + SN EDC + SAM Card',
+        'Foto Roll Sales Draft',
+        'Foto Sales Draft',
+        'Foto BAST',
+        'Foto Surat Pernyataan Training',
+        'Foto PIC Merchant',
+      ]
+    },
+    sharing: {
+      TOTAL_PHASES: 4,
+      PHOTOS_PER_PHASE: [5, 5, 5, 4],
+      TOTAL_PHOTOS: 19,
+      photoTitles: [
+        // Phase 1 (1-5)
+        'Foto Plang',
+        'Foto EDC',
+        'Foto Stiker EDC',
+        'Foto Screen Gard',
+        'Foto SIM Card + SN EDC + SAM Card',
+        // Phase 2 (6-10)
+        'Foto Sales Draft',
+        'Foto PIC Merchant',
+        'Foto Roll Sales Draft',
+        'Foto Surat Pernyataan Training',
+        'Foto Aplikasi EDC',
+        // Phase 3 (11-15)
+        'Foto Sales Draft Patch L (EDC Konven)',
+        'Foto Screen P2G (EDC Android)',
+        'Foto BAST',
+        'Foto Sales Draft All Member Bank (tampak logo bank)',
+        'Foto Sales Draft BMRI',
+        // Phase 4 (16-19)
+        'Foto Sales Draft BNI',
+        'Foto Sales Draft BRI',
+        'Foto Sales Draft BTN',
+        'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
+      ]
+    }
+  };
 
   // Fungsi untuk memilih dan membatalkan pilihan tiket
   const selectTicket = async (ticket: Ticket) => {
@@ -514,36 +607,18 @@ const TicketsScreen = () => {
       alert("Tidak ada ID tiket yang ditemukan.");
       return;
     }
+    setIsLoadingPhotos(true);
     const data = await getSingleTicket(ticketId);
     setPhotos(data.photos);
+    setIsLoadingPhotos(false);
     return data;
-  }
+  };
 
-  const photoTitles = [
-    // Phase 1 (1-5)
-    'Foto Plang',
-    'Foto EDC',
-    'Foto Stiker EDC',
-    'Foto Screen Gard',
-    'Foto SIM Card + SN EDC + SAM Card',
-    // Phase 2 (6-10)
-    'Foto Sales Draft',
-    'Foto PIC Merchant',
-    'Foto Roll Sales Draft',
-    'Foto Surat Pernyataan Training',
-    'Foto Aplikasi EDC',
-    // Phase 3 (11-15)
-    'Foto Sales Draft Patch L (EDC Konven)',
-    'Foto Screen P2G (EDC Android)',
-    'Foto BAST',
-    'Foto Sales Draft All Member Bank (tampak logo bank)',
-    'Foto Sales Draft BMRI',
-    // Phase 4 (16-19)
-    'Foto Sales Draft BNI',
-    'Foto Sales Draft BRI',
-    'Foto Sales Draft BTN',
-    'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
-  ];
+  // Get photo titles based on ticket type
+  const getPhotoTitles = (ticket: Ticket | null) => {
+    const ticketType = getTicketType(ticket);
+    return TICKET_CONFIG[ticketType].photoTitles;
+  };
 
   return (
     <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
@@ -674,7 +749,9 @@ const TicketsScreen = () => {
                 {/* Photos Section */}
                 <View className="mb-2">
                   <Text className="mb-2 font-medium text-gray-500">Foto Bukti:</Text>
-                  {photos.length === 0 ? (
+                  {isLoadingPhotos ? (
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                  ) : photos.length === 0 ? (
                     <Text className="text-gray-500">-</Text>
                   ) : (
                     <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true}>
@@ -717,7 +794,7 @@ const TicketsScreen = () => {
                                 }}
                               >
                                 <Text style={{ color: "white", fontSize: 12, textAlign: "center" }}>
-                                  {photoTitles[index] || `Foto ${index + 1}`}
+                                  {getPhotoTitles(selectedTicket)[index] || `Foto ${index + 1}`}
                                 </Text>
                               </View>
                             </TouchableOpacity>

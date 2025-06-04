@@ -1,6 +1,7 @@
 import { Ticket } from "../types";
+import Constants from 'expo-constants';
 import supabase from "../utils/supabase";
-import { error as handleError } from '../utils/logHandler';
+import { error as handleError, log as handleLog } from '../utils/logHandler';
 
 // Get tickets by user ID from backend API
 export const getTickets = async (user_id: string): Promise<Ticket[]> => {
@@ -53,12 +54,14 @@ export const getSingleTicket = async (ticket_id: string) => {
 // Update tripID and ticket status in table tickets in Supabase by ticket ID by backend API
 export const updateTicket = async (ticket_id: string, trip_id: string, status: string): Promise<void> => {
   try {
+    const appVersion = Constants.expoConfig?.version || 'default:1.4.4';
+    handleLog(`Updating ticket ${ticket_id} with trip ID ${trip_id} and status ${status} using app version ${appVersion}`);
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/tickets/status/no-radar`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ticket_id, trip_id, status }),
+      body: JSON.stringify({ ticket_id, trip_id, status, appVersion }),
     });
 
     if (!response.ok) {

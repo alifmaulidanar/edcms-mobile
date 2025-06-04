@@ -1,6 +1,6 @@
 {
   "name": "pastims-edc-mobile",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "main": "index.ts",
   "scripts": {
     "dev": "npx expo run:android --device",

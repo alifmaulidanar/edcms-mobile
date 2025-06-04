@@ -40,6 +40,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleSendLog = async () => {
     handleLog("Sending log to the server...");
+    handleLog(`App Version: ${appVersion}`);
     await sendLogToBackend();
   };
 

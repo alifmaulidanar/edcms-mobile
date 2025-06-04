@@ -3,15 +3,16 @@ import { RootState } from '../store';
 import { useSelector } from 'react-redux';
 import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import NetInfo from '@react-native-community/netinfo';
 import { getCurrentPositionAsync } from 'expo-location';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
-import { requestPermissionsAsync } from 'expo-media-library';
+// import { requestPermissionsAsync } from 'expo-media-library';
 import { startUploadService } from "../utils/backgroundUploader";
-// import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// import DateTimePicker from '@react-native-community/datetimepicker';
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
@@ -19,12 +20,9 @@ import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
 import { startTicketNew, stopTicketNew, cancelTripNew } from "../utils/noRadar";
+import { getQueueContents, getExtrasQueueContents } from '../utils/offlineQueue';
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from "react-native";
-import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, hasPendingQueueItems, TicketActionQueueItem } from '../utils/offlineQueue';
-import { Ionicons } from '@expo/vector-icons';
-import { getQueueContents, getExtrasQueueContents, clearTicketQueue, clearTicketExtrasQueue } from '../utils/offlineQueue';
-
-// New helper functions for AsyncStorage operations - add after imports
+import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, TicketActionQueueItem } from '../utils/offlineQueue';
 
 /**
  * Gets the selected ticket from AsyncStorage
@@ -458,32 +456,32 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     setIsCompleting(false);
   };
 
-  const handleCancel = async () => {
-    try {
-      if (selectedTicket?.ticket_id) {
-        if (!isConnected) {
-          await enqueueTicketAction({
-            type: 'cancel',
-            ticketId: selectedTicket.ticket_id,
-            createdAt: Date.now(),
-          });
-        } else {
-          await cancelTripNew(selectedTicket.ticket_id);
-        }
-        await AsyncStorage.removeItem("startTime");
-        // Use our helper function instead of direct AsyncStorage call
-        await setSelectedTicketToStorage(null);
-        setTracking(false); // Reset state
-        setSelectedTicket(null);
-        setTime(0);
-        handleLog('Trip canceled (noRadar)');
-        clearLocationCache();
-        onRefresh();
-      }
-    } catch (error: any) {
-      handleError(`Error canceling trip: ${error}`);
-    }
-  };
+  // const handleCancel = async () => {
+  //   try {
+  //     if (selectedTicket?.ticket_id) {
+  //       if (!isConnected) {
+  //         await enqueueTicketAction({
+  //           type: 'cancel',
+  //           ticketId: selectedTicket.ticket_id,
+  //           createdAt: Date.now(),
+  //         });
+  //       } else {
+  //         await cancelTripNew(selectedTicket.ticket_id);
+  //       }
+  //       await AsyncStorage.removeItem("startTime");
+  //       // Use our helper function instead of direct AsyncStorage call
+  //       await setSelectedTicketToStorage(null);
+  //       setTracking(false); // Reset state
+  //       setSelectedTicket(null);
+  //       setTime(0);
+  //       handleLog('Trip canceled (noRadar)');
+  //       clearLocationCache();
+  //       onRefresh();
+  //     }
+  //   } catch (error: any) {
+  //     handleError(`Error canceling trip: ${error}`);
+  //   }
+  // };
 
   const handleStartWithConfirmation = () => {
     if (!selectedTicket) {
@@ -511,22 +509,22 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const handleCanceltWithConfirmation = () => {
-    Alert.alert(
-      "Konfirmasi Pembatalan",
-      "Apakah Anda yakin ingin membatalkan pekerjaan?",
-      [
-        {
-          text: "Batal",
-          style: "cancel",
-        },
-        {
-          text: "Ya",
-          onPress: () => handleCancel(),
-        },
-      ]
-    );
-  };
+  // const handleCanceltWithConfirmation = () => {
+  //   Alert.alert(
+  //     "Konfirmasi Pembatalan",
+  //     "Apakah Anda yakin ingin membatalkan pekerjaan?",
+  //     [
+  //       {
+  //         text: "Batal",
+  //         style: "cancel",
+  //       },
+  //       {
+  //         text: "Ya",
+  //         onPress: () => handleCancel(),
+  //       },
+  //     ]
+  //   );
+  // };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -2659,7 +2657,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
 
         {/* Cancel Button */}
-        {tracking && (
+        {/* {tracking && (
           <TouchableOpacity
             onPress={handleCanceltWithConfirmation}
             className="items-center w-full px-8 py-4 mt-4 bg-gray-500 rounded-full"
@@ -2668,7 +2666,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           >
             <Text className="text-xl font-bold text-white">Batalkan</Text>
           </TouchableOpacity>
-        )}
+        )} */}
       </View>
 
       {/* Confirmation Modal to Start a Ticket */}
