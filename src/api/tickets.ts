@@ -51,6 +51,26 @@ export const getSingleTicket = async (ticket_id: string) => {
   }
 }
 
+// Get an updated ticket status directly from Supabase
+export const getUpdatedTicketStatus = async (ticket_id: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('status')
+      .eq('ticket_id', ticket_id)
+      .single();
+
+    if (error) {
+      handleError(`Error fetching ticket status: ${error.message}`);
+      throw error;
+    }
+    return data?.status;
+  } catch (error) {
+    handleError(`Error: ${error}`);
+    throw error;
+  }
+}
+
 // Update tripID and ticket status in table tickets in Supabase by ticket ID by backend API
 export const updateTicket = async (ticket_id: string, trip_id: string, status: string): Promise<void> => {
   try {

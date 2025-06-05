@@ -128,7 +128,7 @@ const uploadWorker = async (taskData: any) => {
               taskDesc: 'Tidak ada pekerjaan yang tertunda',
               progressBar: { max: 100, value: 100 }
             });
-            handleLog("No pending uploads. Stopping background job.");
+            // handleLog("No pending uploads. Stopping background job.");
             await AsyncStorage.setItem('uploadInProgress', 'false');
             await scheduleNotificationAsync({
               content: {
@@ -273,7 +273,7 @@ const uploadWorker = async (taskData: any) => {
             const failed = JSON.parse(await AsyncStorage.getItem('failedQueue') || '[]');
             const newFailed = [currentJob, ...failed].slice(0, MAX_FAILED_QUEUE_SIZE);
             await AsyncStorage.setItem('failedQueue', JSON.stringify(newFailed));
-            handleLog(`[${new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' })}] Tiket ${currentJob.ticket_id} gagal, attempts: ${currentJob.attempts || 0}`);
+            // handleLog(`[${new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta' })}] Tiket ${currentJob.ticket_id} gagal, attempts: ${currentJob.attempts || 0}`);
             await scheduleNotificationAsync({
               content: {
                 title: 'Gagal mengunggah foto',
@@ -315,7 +315,7 @@ const uploadWorker = async (taskData: any) => {
 export const startUploadService = async (): Promise<boolean> => {
   try {
     if (BackgroundJob.isRunning()) {
-      handleLog("Background job is already running.");
+      // handleLog("Background job is already running.");
       return true;
     }
     const options = {
@@ -341,7 +341,7 @@ export const startUploadService = async (): Promise<boolean> => {
       },
     };
     await BackgroundJob.start(uploadWorker, options);
-    handleLog(`Background service started. Status: ${BackgroundJob.isRunning()}`);
+    // handleLog(`Background service started. Status: ${BackgroundJob.isRunning()}`);
     return true;
   } catch (error) {
     handleError(`Failed to start background job: ${error}`);
@@ -362,12 +362,12 @@ export const startUploadService = async (): Promise<boolean> => {
 export const stopUploadService = async (): Promise<boolean> => {
   try {
     if (BackgroundJob.isRunning()) {
-      handleLog('Menghentikan background service...');
+      // handleLog('Menghentikan background service...');
       await BackgroundJob.stop();
-      handleLog('Background service stopped.');
+      // handleLog('Background service stopped.');
       return true;
     } else {
-      handleLog('Background service is not running.');
+      // handleLog('Background service is not running.');
       return false;
     }
   } catch (error) {

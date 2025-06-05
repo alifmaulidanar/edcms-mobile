@@ -16,10 +16,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
-import { getTicketsWithGeofences, updateTicketExtras } from '../api/tickets';
+import { getTicketsWithGeofences, updateTicketExtras, getUpdatedTicketStatus } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
-import { startTicketNew, stopTicketNew, cancelTripNew } from "../utils/noRadar";
+import { startTicketNew, stopTicketNew } from "../utils/noRadar";
 import { getQueueContents, getExtrasQueueContents } from '../utils/offlineQueue';
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from "react-native";
 import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, TicketActionQueueItem } from '../utils/offlineQueue';
@@ -2772,6 +2772,32 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         currentLocation={currentLocation}
         ticketType={ticketType}
       />
+      {tracking && selectedTicket && (
+        <TouchableOpacity
+          style={{ backgroundColor: '#2563eb', padding: 12, borderRadius: 8, margin: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+          onPress={async () => {
+            try {
+              const latest = await getUpdatedTicketStatus(selectedTicket.ticket_id);
+              if (latest === 'on_progress') {
+                Alert.alert('Tiket masih berjalan', 'Silakan lanjutkan proses seperti biasa.');
+              } else {
+                setTracking(false);
+                setSelectedTicket(null);
+                setTime(0);
+                await AsyncStorage.removeItem('selectedTicket');
+                await AsyncStorage.removeItem('startTime');
+                Alert.alert('Status tiket berubah', `Status tiket telah berubah menjadi ${latest}. Proses berjalan dihentikan.`);
+              }
+            } catch (err) {
+              Alert.alert('Gagal cek status', 'Tidak dapat mengambil status tiket terbaru.');
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="refresh" size={18} color="white" style={{ marginRight: 8 }} />
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>Cek Status Tiket</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView >
   );
 };

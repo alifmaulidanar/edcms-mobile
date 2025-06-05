@@ -15,6 +15,9 @@ import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
 import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator } from "react-native";
 import { enqueueTicketAction } from '../utils/offlineQueue';
 import NetInfo from '@react-native-community/netinfo';
+import { getPendingPhotos, updatePhotoStatus, deletePhoto, TicketPhoto, insertUploadAuditLog, getAuditLogByTicket, cleanOldAuditLogs, initTicketPhotoTable, initUploadAuditLogTable } from '../utils/ticketPhotoDB';
+import * as FileSystem from 'expo-file-system';
+import * as Notifications from 'expo-notifications';
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
 
@@ -75,6 +78,10 @@ const TicketsScreen = () => {
     { key: "complete", title: "Selesai" },
     { key: "canceled", title: "Batal" },
   ]);
+
+  // Tambahkan state untuk modal sinkronisasi
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   // Photo configuration based on ticket type
   const TICKET_CONFIG = {
@@ -241,6 +248,9 @@ const TicketsScreen = () => {
   }, [userData]);
 
   useEffect(() => {
+    // Inisialisasi tabel audit log dan ticket photo
+    initTicketPhotoTable();
+    initUploadAuditLogTable();
     fetchTicketsWithGeofences();
   }, [fetchTicketsWithGeofences]);
 
@@ -620,11 +630,122 @@ const TicketsScreen = () => {
     return TICKET_CONFIG[ticketType].photoTitles;
   };
 
+  // Fungsi upload manual foto tiket
+  const syncTicketPhotos = async (ticketId: string) => {
+    setIsSyncing(true);
+    setSyncProgress({ current: 0, total: 0 });
+    try {
+      const photos: TicketPhoto[] = await getPendingPhotos(ticketId);
+      if (photos.length === 0) {
+        Alert.alert('Tidak ada foto pending', 'Semua foto sudah tersinkronisasi.');
+        setIsSyncing(false);
+        return;
+      }
+      setSyncProgress({ current: 0, total: photos.length });
+      handleLog(`[SYNC] Mulai sinkronisasi foto tiket ${ticketId}, total: ${photos.length}`);
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        setSyncProgress({ current: i + 1, total: photos.length });
+        await updatePhotoStatus(photo.id, 'uploading');
+        try {
+          // Validasi file
+          const fileInfo = await FileSystem.getInfoAsync(photo.local_uri);
+          if (!fileInfo.exists) {
+            handleLog(`[SYNC] File tidak ditemukan: ${photo.local_uri}`);
+            await updatePhotoStatus(photo.id, 'failed');
+            insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: 'File tidak ditemukan' });
+            continue;
+          }
+          // Upload ke server (ganti dengan API upload Anda)
+          const formData = new FormData();
+          formData.append('photo', { uri: photo.local_uri, name: `photo_${photo.queue_order}.jpg`, type: 'image/jpeg' } as any);
+          formData.append('queue_order', photo.queue_order.toString());
+          formData.append('uuid', photo.id ?? '');
+          formData.append('ticket_id', photo.ticket_id ?? '');
+          const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/admin/tickets/photos/new/upload/${photo.ticket_id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              'user_id': photo.user_id ?? '',
+            },
+            body: formData,
+          });
+          if (!response.ok) {
+            handleLog(`[SYNC] Upload gagal untuk foto ${photo.id} (order ${photo.queue_order}): ${response.status}`);
+            await updatePhotoStatus(photo.id, 'failed');
+            insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: `HTTP ${response.status}` });
+            continue;
+          }
+          // Sukses: update status dan hapus file lokal
+          await updatePhotoStatus(photo.id, 'success');
+          await FileSystem.deleteAsync(photo.local_uri, { idempotent: true });
+          await deletePhoto(photo.id);
+          insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'success' });
+          handleLog(`[SYNC] Foto ${photo.id} (order ${photo.queue_order}) berhasil diupload & dihapus lokal`);
+        } catch (err) {
+          handleLog(`[SYNC] Error upload foto ${photo.id}: ${err}`);
+          await updatePhotoStatus(photo.id, 'failed');
+          insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: String(err) });
+        }
+      }
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 0 });
+      cleanOldAuditLogs(30); // Bersihkan log lebih dari 30 hari
+      Alert.alert('Sinkronisasi selesai', 'Semua foto pending telah diproses.');
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Sinkronisasi Foto Selesai',
+          body: `Semua foto untuk tiket ${ticketId} telah disinkronkan.`,
+        },
+        trigger: null,
+      });
+    } catch (err) {
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 0 });
+      handleLog(`[SYNC] Error utama sinkronisasi: ${err}`);
+      Alert.alert('Error', 'Terjadi kesalahan saat sinkronisasi.');
+    }
+  };
+
+  // Summary foto pending/failed di detail tiket
+  const getPhotoSummary = (ticketId: string) => {
+    const auditLogs = getAuditLogByTicket(ticketId);
+    const failed = auditLogs.filter(log => log.status === 'failed').length;
+    const success = auditLogs.filter(log => log.status === 'success').length;
+    return { failed, success };
+  };
+
   return (
     <View className="flex-1 bg-[#f5f5f5] p-2 mt-6">
-      <Text className="px-6 pt-4 text-2xl font-semibold text-gray-700">
-        Tiket Saya
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 }}>
+        <Text className="text-2xl font-semibold text-gray-700">Tiket Saya</Text>
+        <TouchableOpacity
+          onPress={async () => {
+            // Sinkronkan semua foto pending untuk semua tiket
+            setIsSyncing(true);
+            let allPending = 0;
+            for (const ticket of tickets) {
+              const pending = await getPendingPhotos(ticket.ticket_id);
+              if (pending.length > 0) {
+                await syncTicketPhotos(ticket.ticket_id);
+                allPending += pending.length;
+              }
+            }
+            if (allPending === 0) {
+              Alert.alert('Tidak ada foto pending', 'Semua foto sudah tersinkronisasi.');
+            }
+            setIsSyncing(false);
+          }}
+          style={{ backgroundColor: isSyncing ? '#d1d5db' : '#2563eb', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
+          disabled={isSyncing}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="cloud-upload-outline" size={20} color="white" style={{ marginRight: 6 }} />
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
+            {isSyncing ? 'Sinkronisasi...' : 'Sinkronkan Foto'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <TabView
         navigationState={{ index, routes }}
@@ -663,7 +784,7 @@ const TicketsScreen = () => {
               {selectedTicket?.description}
             </Text>
 
-            {selectedTicket ? (
+            {selectedTicket && (
               <View>
                 {/* Ticket ID */}
                 <View className="flex-row items-center justify-between mb-2">
@@ -843,9 +964,45 @@ const TicketsScreen = () => {
                     })()}
                   </Text>
                 </View>
+
+                {/* Pada UI detail tiket, tampilkan summary foto pending/failed */}
+                <View style={{ marginVertical: 16 }}>
+                  {(() => {
+                    const summary = getPhotoSummary(selectedTicket.ticket_id);
+                    return (
+                      <View style={{ marginBottom: 8 }}>
+                        <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                          Foto gagal upload: {summary.failed}
+                        </Text>
+                        <Text style={{ color: '#10b981', fontWeight: 'bold' }}>
+                          Foto berhasil upload: {summary.success}
+                        </Text>
+                      </View>
+                    );
+                  })()}
+                  {/* Tombol sinkronisasi */}
+                  <TouchableOpacity
+                    onPress={() => syncTicketPhotos(selectedTicket.ticket_id)}
+                    disabled={isSyncing}
+                    style={{ backgroundColor: isSyncing ? '#d1d5db' : '#2563eb', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
+                      {isSyncing ? `Sinkronisasi... (${syncProgress.current}/${syncProgress.total})` : 'Sinkronkan foto tiket'}
+                    </Text>
+                  </TouchableOpacity>
+                  {isSyncing && (
+                    <View style={{ alignItems: 'center', marginTop: 8 }}>
+                      <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: 'bold' }}>
+                        Jangan tutup aplikasi atau pindah halaman selama proses sinkronisasi!
+                      </Text>
+                      <Text style={{ color: '#6b7280', fontSize: 12 }}>
+                        Proses ini tidak bisa dihentikan. Estimasi waktu tergantung jumlah foto dan kecepatan internet.
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            ) : (
-              <Text className="text-gray-500">Memuat data tiket...</Text>
             )}
 
             {/* Download PDF Button */}
@@ -960,6 +1117,7 @@ const TicketItem = React.memo(({
   const userData = useSelector((state: RootState) => state.user);
   const geofenceItem = geofenceLookup[ticket.geofence_id];
   const geofenceDescription = geofenceItem?.description || 'Loading location...';
+  const [continueDisabled, setContinueDisabled] = useState(false);
 
   // Function to get color based on ticket type
   const getTicketTypeColor = (ticketType: string) => {
@@ -1037,6 +1195,7 @@ const TicketItem = React.memo(({
           text: 'Ya',
           style: 'default',
           onPress: async () => {
+            setContinueDisabled(true);
             try {
               await AsyncStorage.setItem('selectedTicket', JSON.stringify(ticket));
               // Use updated_at as start time for stopwatch
@@ -1066,6 +1225,7 @@ const TicketItem = React.memo(({
               navigation.navigate('Main');
             } catch (error) {
               alert('Gagal melanjutkan tiket. Silakan coba lagi.');
+              setContinueDisabled(false);
             }
           }
         }
@@ -1188,7 +1348,9 @@ const TicketItem = React.memo(({
                   flexDirection: 'row',
                   justifyContent: 'center',
                   alignItems: 'center',
+                  opacity: continueDisabled ? 0.6 : 1,
                 }}
+                disabled={continueDisabled}
               >
                 <Ionicons name="play" size={16} color="white" style={{ marginRight: 4 }} />
                 <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold' }}>

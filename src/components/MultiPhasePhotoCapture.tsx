@@ -1,15 +1,14 @@
-import { QueueItem } from '../types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from "react";
-import BackgroundJob from 'react-native-background-actions';
-import { startUploadService } from "../utils/backgroundUploader";
 import { addTimestampToPhoto } from "./ImageTimestampAndLocation";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { launchCameraAsync, MediaTypeOptions } from "expo-image-picker";
+import { launchCameraAsync } from "expo-image-picker";
 import { getCurrentPositionAsync } from 'expo-location';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { saveToLibraryAsync, requestPermissionsAsync } from 'expo-media-library';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from "react-native";
+import { insertTicketPhoto, initTicketPhotoTable } from '../utils/ticketPhotoDB';
+import * as FileSystem from 'expo-file-system';
+import { v4 as uuidv4 } from 'uuid';
 
 // Photo configuration based on ticket type
 const TICKET_CONFIG = {
@@ -134,6 +133,11 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
     };
   }, []);
 
+  // Inisialisasi table SQLite saat komponen mount
+  useEffect(() => {
+    initTicketPhotoTable();
+  }, []);
+
   // Calculate required photos for current phase
   const getPhasePhotoCount = (phase: number) => {
     return config.PHOTOS_PER_PHASE[phase - 1];
@@ -146,6 +150,27 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
       startIndex += config.PHOTOS_PER_PHASE[i];
     }
     return startIndex;
+  };
+
+  // Helper: Cek storage device sebelum simpan foto
+  const checkStorageBeforeSave = async (minFreeMB: number = 100): Promise<boolean> => {
+    try {
+      const freeBytes = await FileSystem.getFreeDiskStorageAsync();
+      const freeMB = freeBytes / (1024 * 1024);
+      if (freeMB < minFreeMB) {
+        handleError(`[Storage] Sisa storage device sangat rendah: ${freeMB.toFixed(2)} MB`);
+        Alert.alert(
+          'Penyimpanan Hampir Penuh',
+          `Sisa penyimpanan di perangkat Anda sangat sedikit (${freeMB.toFixed(2)} MB). Silakan hapus file tidak penting atau sinkronkan foto sebelum mengambil foto baru.`
+        );
+        return false;
+      }
+      return true;
+    } catch (err) {
+      handleError(`[Storage] Error cek storage: ${err}`);
+      // Jika gagal cek storage, tetap lanjut (fallback)
+      return true;
+    }
   };
 
   // Save photo to gallery
@@ -173,34 +198,43 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
     }
   };
 
-  // Add photos to upload queue
-  const addToQueue = async (photos: string[], ticketId: string, userId: string, startIndex: number = 0) => {
+  // Refactor: Simpan foto ke file-system dan SQLite
+  const savePhotoToLocalDB = async (photoUri: string, ticketId: string, queueOrder: number): Promise<string | null> => {
+    // Cek storage sebelum copy file
+    const enoughStorage = await checkStorageBeforeSave();
+    if (!enoughStorage) return null;
     try {
-      const newItem: QueueItem = {
-        ticket_id: ticketId,
-        user_id: userId,
-        photos,
-        timestamp,
-        location: currentLocation,
-        photoStartIndex: startIndex, // Add a new property to track photo indices
-      };
-      const queue = JSON.parse(await AsyncStorage.getItem('uploadQueue') || '[]');
-      const newQueue = [...queue, newItem];
-      await AsyncStorage.setItem('uploadQueue', JSON.stringify(newQueue));
-      handleLog(`Added ${photos.length} photos to queue starting at index ${startIndex}`);
-      return true;
-    } catch (error) {
-      handleError(`Failed to add photos to queue: ${error}`);
-      return false;
+      // Buat folder khusus per tiket
+      const folderUri = `${FileSystem.documentDirectory}photos/${ticketId}/`;
+      await FileSystem.makeDirectoryAsync(folderUri, { intermediates: true }).catch(() => { });
+      // Nama file: uuid v4
+      const uuid = uuidv4();
+      const fileName = `${queueOrder.toString().padStart(2, '0')}_${uuid}.jpg`;
+      const destUri = folderUri + fileName;
+      await FileSystem.copyAsync({ from: photoUri, to: destUri });
+      // Insert ke SQLite
+      await insertTicketPhoto(ticketId, queueOrder, destUri);
+      handleLog(`[Photo] Foto disimpan ke file-system & SQLite: ${destUri}`);
+      return destUri;
+    } catch (err) {
+      handleError(`[Photo] Gagal simpan foto ke lokal: ${err}`);
+      return null;
     }
   };
 
-  // Take a photo
+  // Refactor handleTakePhoto
   const handleTakePhoto = async () => {
     setIsPhotoProcessed(true);
     const requiredPhotoCount = getPhasePhotoCount(currentPhase);
     if (phasePhotos.length >= requiredPhotoCount) {
       Alert.alert("Batas Tercapai", `Anda hanya dapat mengambil ${requiredPhotoCount} foto untuk tahap ini.`);
+      setIsPhotoProcessed(false);
+      return;
+    }
+
+    // Cek storage sebelum ambil foto
+    const enoughStorage = await checkStorageBeforeSave();
+    if (!enoughStorage) {
       setIsPhotoProcessed(false);
       return;
     }
@@ -213,7 +247,6 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
           const freshLoc = await getCurrentPositionAsync({});
           locationToUse = freshLoc;
         } catch (e) {
-          // fallback ke currentLocation jika ada
           if (currentLocation && currentLocation.coords) {
             locationToUse = currentLocation;
           } else {
@@ -223,7 +256,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
       }
 
       const result = await launchCameraAsync({
-        mediaTypes: MediaTypeOptions.Images,
+        mediaTypes: 'images',
         quality: 0.4,
         allowsEditing: false,
         exif: false,
@@ -233,26 +266,30 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
         const globalIndex = getCurrentPhaseStartIndex() + phasePhotos.length;
         const processedUri = await addTimestampToPhoto(
           photoUri,
-          `${ticketId}-${timestamp}-${globalIndex}.jpg`,
+          `${ticketId}-${timestamp}-${globalIndex + 1}.jpg`,
           timestamp,
           locationToUse
         );
-
         if (processedUri) {
           await savePhotoToGallery(processedUri);
-          const newPhotos = [...phasePhotos, processedUri];
-          setPhasePhotos(newPhotos);
-          setTotalPhotosTaken(totalPhotosTaken + 1);
-          handleLog(`✅ Photo ${globalIndex + 1} successfully captured (${newPhotos.length}/${requiredPhotoCount} for phase ${currentPhase})`);
-
-          // Check if we've reached the required number for this phase and suggest uploading
-          if (newPhotos.length === requiredPhotoCount) {
-            setTimeout(() => {
-              Alert.alert(
-                "Foto Lengkap",
-                `${requiredPhotoCount} foto untuk tahap ${currentPhase} telah lengkap. Silakan unggah untuk melanjutkan.`
-              );
-            }, 500);
+          // Simpan ke file-system & SQLite
+          const localUri = await savePhotoToLocalDB(processedUri, ticketId, globalIndex + 1);
+          if (localUri) {
+            const newPhotos = [...phasePhotos, localUri];
+            setPhasePhotos(newPhotos);
+            setTotalPhotosTaken(totalPhotosTaken + 1);
+            handleLog(`✅ Photo ${globalIndex + 1} berhasil diambil & disimpan (${newPhotos.length}/${requiredPhotoCount} untuk phase ${currentPhase})`);
+            if (newPhotos.length === requiredPhotoCount) {
+              setTimeout(() => {
+                Alert.alert(
+                  "Foto Lengkap",
+                  `${requiredPhotoCount} foto untuk tahap ${currentPhase} telah lengkap. Silakan lanjut ke tahap berikutnya.`
+                );
+              }, 500);
+            }
+          } else {
+            handleError(`Gagal simpan foto ke lokal untuk phase ${currentPhase}`);
+            Alert.alert("Gagal menyimpan foto", "Silakan coba lagi.");
           }
         } else {
           handleError(`Failed to process photo for phase ${currentPhase}`);
@@ -264,104 +301,6 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
       Alert.alert("Kesalahan", "Gagal mengambil foto. Silakan coba lagi.");
     } finally {
       setIsPhotoProcessed(false);
-    }
-  };
-
-  // Upload photos for current phase
-  const uploadCurrentPhasePhotos = async () => {
-    // if (!isConnected) {
-    //   Alert.alert("Tidak Ada Koneksi", "Pastikan perangkat terhubung ke internet untuk mengunggah foto.");
-    //   return;
-    // }
-    const requiredPhotoCount = getPhasePhotoCount(currentPhase);
-    if (phasePhotos.length !== requiredPhotoCount) {
-      Alert.alert("Foto Tidak Lengkap", `Ambil ${requiredPhotoCount} foto untuk tahap ini.`);
-      return;
-    }
-
-    try {
-      setIsUploading(true);
-      setUploadMessage(`Mempersiapkan pengunggahan untuk tahap ${currentPhase}...`);
-      // Add photos to queue with correct start index
-      const startIndex = getCurrentPhaseStartIndex();
-      const success = await addToQueue(phasePhotos, ticketId, userId, startIndex);
-      if (success) {
-        setUploadMessage(
-          isConnected
-            ? `Memulai unggah foto tahap ${currentPhase}...`
-            : `Foto berhasil ditambahkan ke antrian. Akan diunggah otomatis saat online.`
-        );
-        // Start the background upload service if it's not running
-        if (isConnected && !BackgroundJob.isRunning()) {
-          await startUploadService();
-        }
-
-        // Update phase status
-        const newStatus = [...allPhaseStatus];
-        newStatus[currentPhase - 1] = true;
-        setAllPhaseStatus(newStatus);
-        // Move to next phase or complete
-        if (currentPhase < config.TOTAL_PHASES) {
-          setUploadMessage(
-            isConnected
-              ? `Berhasil mengunggah foto tahap ${currentPhase}.`
-              : `Foto tahap ${currentPhase} menunggu upload (offline).`
-          );
-          // Reset for next phase
-          setPhasePhotos([]);
-          setCurrentPhase(currentPhase + 1);
-          setIsUploading(false);
-          setUploadProgress(0);
-          setUploadMessage("");
-        } else {
-          // Final phase completed
-          setUploadMessage(
-            isConnected
-              ? "Semua foto berhasil diunggah!"
-              : "Semua foto telah masuk antrian upload."
-          );
-          // Wait a moment to show success message before completing
-          setTimeout(() => {
-            setIsUploading(false);
-            handleLog(`All ${config.TOTAL_PHOTOS} photos successfully uploaded for ticket ${ticketId}`);
-            onComplete(); // Call the onComplete callback to continue with ticket extras
-          }, 1000);
-        }
-      } else {
-        handleError(`Failed to add photos to queue for phase ${currentPhase}`);
-        Alert.alert(
-          "Gagal",
-          "Tidak dapat menambahkan foto ke antrian. Silakan coba lagi.",
-          [
-            {
-              text: "Coba Lagi",
-              onPress: () => uploadCurrentPhasePhotos()
-            },
-            {
-              text: "Batal",
-              style: "cancel"
-            }
-          ]
-        );
-        setIsUploading(false);
-      }
-    } catch (error) {
-      handleError(`Error uploading photos for phase ${currentPhase}: ${error}`);
-      Alert.alert(
-        "Kesalahan",
-        "Terjadi kesalahan saat mengunggah foto. Silakan coba lagi.",
-        [
-          {
-            text: "Coba Lagi",
-            onPress: () => uploadCurrentPhasePhotos()
-          },
-          {
-            text: "Batal",
-            style: "cancel"
-          }
-        ]
-      );
-      setIsUploading(false);
     }
   };
 
@@ -424,6 +363,22 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
   // Calculate progress percentage for phase
   const getPhaseProgress = () => {
     return Math.round((totalPhotosTaken / config.TOTAL_PHOTOS) * 100);
+  };
+
+  const handleFinishAndUpload = async () => {
+    const totalRequired = config.TOTAL_PHOTOS;
+    if (totalPhotosTaken >= totalRequired) {
+      Alert.alert(
+        'Sinkronisasi Manual',
+        'Foto sudah cukup. Sinkronisasi foto harus dilakukan manual melalui halaman tiket. Lanjutkan ke pengisian berita acara.',
+        [
+          { text: 'OK', onPress: () => onComplete() }
+        ]
+      );
+    } else {
+      Alert.alert('Foto Belum Cukup', `Anda harus mengambil minimal ${totalRequired} foto sesuai ketentuan sebelum melanjutkan.`);
+      // Lanjutkan pengambilan foto
+    }
   };
 
   return (
@@ -535,7 +490,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             </View>
             {phasePhotos.length === getPhasePhotoCount(currentPhase) ? (
               <TouchableOpacity
-                onPress={uploadCurrentPhasePhotos}
+                onPress={handleFinishAndUpload}
                 // disabled={isUploading || !isConnected}
                 // className={`items-center px-8 py-4 my-2 rounded-full ${isUploading || !isConnected ? "bg-gray-300" : "bg-blue-500"}`}
                 disabled={isUploading}
