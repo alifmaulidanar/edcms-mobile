@@ -58,6 +58,7 @@ export interface Geofence {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  address?: string;
 }
 
 export interface Trip {

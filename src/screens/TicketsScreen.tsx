@@ -12,12 +12,13 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { getSingleTicket, getTicketsWithGeofences } from "../api/tickets";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
-import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator, TouchableWithoutFeedback, ScrollView as RNScrollView, BackHandler } from "react-native";
 import { enqueueTicketAction } from '../utils/offlineQueue';
 import NetInfo from '@react-native-community/netinfo';
-import { getPendingPhotos, updatePhotoStatus, deletePhoto, TicketPhoto, insertUploadAuditLog, getAuditLogByTicket, cleanOldAuditLogs, initTicketPhotoTable, initUploadAuditLogTable } from '../utils/ticketPhotoDB';
+import { getPendingPhotos, updatePhotoStatus, deletePhoto, insertUploadAuditLog, initTicketPhotoTable, initUploadAuditLogTable } from '../utils/ticketPhotoDB';
 import * as FileSystem from 'expo-file-system';
-import * as Notifications from 'expo-notifications';
+import SyncPreviewModal from '../components/SyncPreviewModal';
+import SyncProgressModal from '../components/SyncProgressModal';
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
 
@@ -82,6 +83,31 @@ const TicketsScreen = () => {
   // Tambahkan state untuk modal sinkronisasi
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+
+  // Tambahkan state untuk NetInfo
+  const [isNetInfoSafe, setIsNetInfoSafe] = useState(false);
+
+  // Tambahkan state untuk modal preview
+  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false);
+  const [syncableTickets, setSyncableTickets] = useState<any[]>([]); // [{ticket, photos: [{...}]}]
+  const [selectedTicketsToSync, setSelectedTicketsToSync] = useState<string[]>([]);
+  const [accordionOpen, setAccordionOpen] = useState<string | null>(null);
+
+  // Tambahkan state untuk modal progres
+  const [isProgressModalVisible, setIsProgressModalVisible] = useState(false);
+  const [progressState, setProgressState] = useState({
+    currentTicketIdx: 0,
+    currentPhotoIdx: 0,
+    totalTickets: 0,
+    totalPhotos: 0,
+    currentTicket: null as any,
+    currentPhoto: null as any,
+    status: 'idle', // 'uploading', 'done'
+  });
+  const [syncResultSummary, setSyncResultSummary] = useState<any>(null);
+
+  // Tambahkan state untuk showAdditionalInfo
+  const [showAdditionalInfo, setShowAdditionalInfo] = useState<boolean>(false);
 
   // Photo configuration based on ticket type
   const TICKET_CONFIG = {
@@ -630,89 +656,162 @@ const TicketsScreen = () => {
     return TICKET_CONFIG[ticketType].photoTitles;
   };
 
-  // Fungsi upload manual foto tiket
-  const syncTicketPhotos = async (ticketId: string) => {
-    setIsSyncing(true);
-    setSyncProgress({ current: 0, total: 0 });
-    try {
-      const photos: TicketPhoto[] = await getPendingPhotos(ticketId);
-      if (photos.length === 0) {
-        Alert.alert('Tidak ada foto pending', 'Semua foto sudah tersinkronisasi.');
-        setIsSyncing(false);
-        return;
-      }
-      setSyncProgress({ current: 0, total: photos.length });
-      handleLog(`[SYNC] Mulai sinkronisasi foto tiket ${ticketId}, total: ${photos.length}`);
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i];
-        setSyncProgress({ current: i + 1, total: photos.length });
-        await updatePhotoStatus(photo.id, 'uploading');
-        try {
-          // Validasi file
-          const fileInfo = await FileSystem.getInfoAsync(photo.local_uri);
-          if (!fileInfo.exists) {
-            handleLog(`[SYNC] File tidak ditemukan: ${photo.local_uri}`);
-            await updatePhotoStatus(photo.id, 'failed');
-            insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: 'File tidak ditemukan' });
-            continue;
+  // Cek NetInfo setiap mount dan saat koneksi berubah
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      // Izinkan wifi dan cellular, harus isConnected dan isInternetReachable
+      const safe =
+        (state.type === 'wifi' || state.type === 'cellular') &&
+        state.isConnected &&
+        state.isInternetReachable;
+      setIsNetInfoSafe(!!safe);
+    });
+    // Cek awal
+    NetInfo.fetch().then(state => {
+      const safe =
+        (state.type === 'wifi' || state.type === 'cellular') &&
+        state.isConnected &&
+        state.isInternetReachable;
+      setIsNetInfoSafe(!!safe);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Disable back handler selama modal progres aktif
+  useEffect(() => {
+    if (!isProgressModalVisible) return;
+    const handler = () => true; // block back
+    BackHandler.addEventListener('hardwareBackPress', handler);
+    return () => BackHandler.removeEventListener('hardwareBackPress', handler);
+  }, [isProgressModalVisible]);
+
+  // Handler sinkronisasi batch dengan progres
+  const handleSyncSelectedTickets = async () => {
+    setIsPreviewModalVisible(false);
+    setIsProgressModalVisible(true);
+    setSyncResultSummary(null);
+    let totalTickets = syncableTickets.filter(row => selectedTicketsToSync.includes(row.ticket.ticket_id)).length;
+    let totalPhotos = syncableTickets.filter(row => selectedTicketsToSync.includes(row.ticket.ticket_id)).reduce((acc, row) => acc + row.photos.length, 0);
+    let summary: any[] = [];
+    let photoCounter = 0;
+    for (let tIdx = 0; tIdx < syncableTickets.length; tIdx++) {
+      const row = syncableTickets[tIdx];
+      if (!selectedTicketsToSync.includes(row.ticket.ticket_id)) continue;
+      let ticketResult = { ticket_id: row.ticket.ticket_id, description: row.ticket.description, success: 0, failed: 0 };
+      for (let pIdx = 0; pIdx < row.photos.length; pIdx++) {
+        setProgressState({
+          currentTicketIdx: tIdx + 1,
+          currentPhotoIdx: pIdx + 1,
+          totalTickets,
+          totalPhotos,
+          currentTicket: row.ticket,
+          currentPhoto: row.photos[pIdx],
+          status: 'uploading',
+        });
+        // Proses upload satu foto (panggil syncTicketPhotos untuk satu foto saja, atau refactor logic upload per foto di sini)
+        // Untuk performa, upload satu per satu, delay kecil antar upload
+        let retry = 0;
+        let uploaded = false;
+        let photo = row.photos[pIdx];
+        while (retry < 3 && !uploaded) {
+          try {
+            // Validasi file
+            const fileInfo = await FileSystem.getInfoAsync(photo.local_uri);
+            if (!fileInfo.exists) {
+              handleLog(`[SYNC] File tidak ditemukan: ${photo.local_uri}`);
+              await updatePhotoStatus(photo.id, 'failed');
+              insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: 'File tidak ditemukan' });
+              ticketResult.failed++;
+              break;
+            }
+            // Upload ke server
+            const formData = new FormData();
+            formData.append('photo', { uri: photo.local_uri, name: `photo_${photo.queue_order}.jpg`, type: 'image/jpeg' } as any);
+            formData.append('queue_order', photo.queue_order.toString());
+            formData.append('uuid', photo.id ?? '');
+            formData.append('ticket_id', photo.ticket_id ?? '');
+            // Ambil user_id dari Redux/userData, fallback ke photo.user_id
+            const userIdHeader = userData?.user_id || photo.user_id || '';
+            const response = await fetch(`${BASE_URL2}/admin/tickets/photos/new/upload/${photo.ticket_id}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'multipart/form-data',
+                'user_id': userIdHeader,
+              },
+              body: formData,
+            });
+            if (!response.ok) {
+              handleLog(`[SYNC] Upload gagal untuk foto ${photo.id} (order ${photo.queue_order}): ${response.status}`);
+              retry++;
+              if (retry >= 3) {
+                await updatePhotoStatus(photo.id, 'failed');
+                insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: `HTTP ${response.status}` });
+                ticketResult.failed++;
+              } else {
+                await new Promise(res => setTimeout(res, 100 * retry));
+              }
+              continue;
+            }
+            // Sukses: update status dan hapus file lokal
+            await updatePhotoStatus(photo.id, 'success');
+            await FileSystem.deleteAsync(photo.local_uri, { idempotent: true });
+            await deletePhoto(photo.id);
+            insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'success' });
+            handleLog(`[SYNC] Foto ${photo.id} (order ${photo.queue_order}) berhasil diupload & dihapus lokal`);
+            ticketResult.success++;
+            uploaded = true;
+          } catch (err) {
+            handleLog(`[SYNC] Error upload foto ${photo.id}: ${err}`);
+            retry++;
+            if (retry >= 3) {
+              await updatePhotoStatus(photo.id, 'failed');
+              insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: String(err) });
+              ticketResult.failed++;
+            } else {
+              await new Promise(res => setTimeout(res, 100 * retry));
+            }
           }
-          // Upload ke server (ganti dengan API upload Anda)
-          const formData = new FormData();
-          formData.append('photo', { uri: photo.local_uri, name: `photo_${photo.queue_order}.jpg`, type: 'image/jpeg' } as any);
-          formData.append('queue_order', photo.queue_order.toString());
-          formData.append('uuid', photo.id ?? '');
-          formData.append('ticket_id', photo.ticket_id ?? '');
-          const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2 as string}/admin/tickets/photos/new/upload/${photo.ticket_id}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'multipart/form-data',
-              'user_id': photo.user_id ?? '',
-            },
-            body: formData,
-          });
-          if (!response.ok) {
-            handleLog(`[SYNC] Upload gagal untuk foto ${photo.id} (order ${photo.queue_order}): ${response.status}`);
-            await updatePhotoStatus(photo.id, 'failed');
-            insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: `HTTP ${response.status}` });
-            continue;
-          }
-          // Sukses: update status dan hapus file lokal
-          await updatePhotoStatus(photo.id, 'success');
-          await FileSystem.deleteAsync(photo.local_uri, { idempotent: true });
-          await deletePhoto(photo.id);
-          insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'success' });
-          handleLog(`[SYNC] Foto ${photo.id} (order ${photo.queue_order}) berhasil diupload & dihapus lokal`);
-        } catch (err) {
-          handleLog(`[SYNC] Error upload foto ${photo.id}: ${err}`);
-          await updatePhotoStatus(photo.id, 'failed');
-          insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'failed', error_message: String(err) });
         }
+        photoCounter++;
+        await new Promise(res => setTimeout(res, 80)); // delay kecil antar upload
       }
-      setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 0 });
-      cleanOldAuditLogs(30); // Bersihkan log lebih dari 30 hari
-      Alert.alert('Sinkronisasi selesai', 'Semua foto pending telah diproses.');
-      Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Sinkronisasi Foto Selesai',
-          body: `Semua foto untuk tiket ${ticketId} telah disinkronkan.`,
-        },
-        trigger: null,
-      });
-    } catch (err) {
-      setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 0 });
-      handleLog(`[SYNC] Error utama sinkronisasi: ${err}`);
-      Alert.alert('Error', 'Terjadi kesalahan saat sinkronisasi.');
+      summary.push(ticketResult);
+    }
+    setProgressState(ps => ({ ...ps, status: 'done' }));
+    setSyncResultSummary(summary);
+    setIsSyncing(false);
+  };
+
+  // Handler untuk modal preview sinkronisasi
+  const handleOpenSyncPreview = async () => {
+    setIsSyncing(true);
+    const result: any[] = [];
+    for (const ticket of tickets) {
+      const pending = await getPendingPhotos(ticket.ticket_id);
+      if (pending.length > 0) {
+        result.push({ ticket, photos: pending });
+      }
+    }
+    setSyncableTickets(result);
+    setSelectedTicketsToSync(result.map(r => r.ticket.ticket_id)); // default: semua terpilih
+    setIsPreviewModalVisible(true);
+    setIsSyncing(false);
+  };
+
+  const handleSelectAllTickets = () => {
+    if (selectedTicketsToSync.length === syncableTickets.length) {
+      setSelectedTicketsToSync([]);
+    } else {
+      setSelectedTicketsToSync(syncableTickets.map(r => r.ticket.ticket_id));
     }
   };
 
-  // Summary foto pending/failed di detail tiket
-  const getPhotoSummary = (ticketId: string) => {
-    const auditLogs = getAuditLogByTicket(ticketId);
-    const failed = auditLogs.filter(log => log.status === 'failed').length;
-    const success = auditLogs.filter(log => log.status === 'success').length;
-    return { failed, success };
+  const handleToggleTicket = (ticketId: string) => {
+    setSelectedTicketsToSync(prev =>
+      prev.includes(ticketId)
+        ? prev.filter(id => id !== ticketId)
+        : [...prev, ticketId]
+    );
   };
 
   return (
@@ -720,24 +819,9 @@ const TicketsScreen = () => {
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 }}>
         <Text className="text-2xl font-semibold text-gray-700">Tiket Saya</Text>
         <TouchableOpacity
-          onPress={async () => {
-            // Sinkronkan semua foto pending untuk semua tiket
-            setIsSyncing(true);
-            let allPending = 0;
-            for (const ticket of tickets) {
-              const pending = await getPendingPhotos(ticket.ticket_id);
-              if (pending.length > 0) {
-                await syncTicketPhotos(ticket.ticket_id);
-                allPending += pending.length;
-              }
-            }
-            if (allPending === 0) {
-              Alert.alert('Tidak ada foto pending', 'Semua foto sudah tersinkronisasi.');
-            }
-            setIsSyncing(false);
-          }}
-          style={{ backgroundColor: isSyncing ? '#d1d5db' : '#2563eb', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
-          disabled={isSyncing}
+          onPress={handleOpenSyncPreview}
+          style={{ backgroundColor: isSyncing || !isNetInfoSafe ? '#d1d5db' : '#2563eb', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
+          disabled={isSyncing || !isNetInfoSafe}
           activeOpacity={0.7}
         >
           <Ionicons name="cloud-upload-outline" size={20} color="white" style={{ marginRight: 6 }} />
@@ -774,258 +858,301 @@ const TicketsScreen = () => {
         animationType="slide"
         onRequestClose={() => setIsModalVisible(false)}
       >
-        <View className="items-center justify-center flex-1 bg-black/50">
-          <View className="w-11/12 p-6 bg-white rounded-lg shadow-lg">
-            <Text className="mb-4 text-2xl font-semibold text-gray-800">
-              Detail Tiket
-            </Text>
-
-            <Text className="mb-4 text-lg font-semibold text-gray-800">
-              {selectedTicket?.description}
-            </Text>
-
-            {selectedTicket && (
-              <View>
-                {/* Ticket ID */}
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="font-medium text-gray-500">ID Tiket:</Text>
-                  <View className="flex-row items-center">
-                    <Text className="mr-2 text-gray-800">
-                      {selectedTicket.ticket_id}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => copyToClipboard(`ID Tiket: ${selectedTicket.ticket_id}`)}
-                    >
-                      <Ionicons name="copy-outline" size={16} color="#4F46E5" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Geofence ID */}
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="font-medium text-gray-500">ID Tempat:</Text>
-                  <View className="flex-row items-center">
-                    <Text className="mr-2 text-gray-800">
-                      {selectedTicket.geofence_id}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => copyToClipboard(`ID Tempat (${geofenceLookup[selectedTicket.geofence_id]?.description || ''}): ${selectedTicket.geofence_id}`)}
-                    >
-                      <Ionicons name="copy-outline" size={16} color="#4F46E5" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Place Name */}
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="font-medium text-gray-500">Tempat:</Text>
-                  <View className="flex-row items-center">
-                    <Text className="text-gray-800">
-                      {geofenceLookup[selectedTicket.geofence_id]?.description?.length > 30
-                        ? `${geofenceLookup[selectedTicket.geofence_id]?.description.slice(0, 30)}...`
-                        : geofenceLookup[selectedTicket.geofence_id]?.description || 'Tempat tidak ditemukan'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Open in Google Maps */}
-                <TouchableOpacity
-                  className="items-center p-2 mb-2 border border-blue-500 rounded-lg"
-                  onPress={() => {
-                    const coordinates = geofenceLookup[selectedTicket.geofence_id]?.coordinates || [0, 0];
-                    openInGoogleMaps(coordinates);
-                  }}
-                >
-                  <View className="flex-row items-center gap-x-2">
-                    <Text className="font-medium text-blue-500">
-                      Buka di Google Maps
-                    </Text>
-                    <Ionicons name="open-outline" size={16} color="#3b82f6" />
-                  </View>
-                </TouchableOpacity>
-
-                {/* Status */}
-                <View className="flex-row justify-between">
-                  <Text className="font-medium text-gray-500">Status:</Text>
-                  <Text
-                    className={`text-sm font-semibold px-2 py-1 rounded ${selectedTicket.status === "assigned"
-                      ? "bg-blue-100 text-blue-600"
-                      : selectedTicket.status === "on_progress"
-                        ? "bg-yellow-100 text-yellow-600"
-                        : selectedTicket.status === "completed"
-                          ? "bg-green-100 text-green-600"
-                          : "bg-red-100 text-red-600"
-                      }`}
-                  >
-                    {selectedTicket.status === "assigned"
-                      ? "Ditugaskan"
-                      : selectedTicket.status === "on_progress"
-                        ? "Berjalan"
-                        : selectedTicket.status === "completed"
-                          ? "Selesai"
-                          : "Dibatalkan"}
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          {/* Overlay untuk klik di luar modal */}
+          <TouchableWithoutFeedback onPress={() => setIsModalVisible(false)}>
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+          </TouchableWithoutFeedback>
+          {/* Modal Box */}
+          <View className="w-11/12 p-0 bg-white rounded-lg shadow-lg max-h-[90%]" style={{ zIndex: 10 }}>
+            {/* Sticky Header: Judul dan Tombol X */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 12, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: 'white', zIndex: 10 }}>
+              <Text className="text-2xl font-semibold text-gray-800">Detail Tiket</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsModalVisible(false);
+                  setPhotos([]);
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={{ marginLeft: 12 }}
+              >
+                <Ionicons name="close" size={28} color="#374151" />
+              </TouchableOpacity>
+            </View>
+            {/* Scrollable Content */}
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 32 }}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              nestedScrollEnabled={true}
+            >
+              {selectedTicket && (
+                <View pointerEvents="box-none">
+                  <Text className="mb-4 text-lg font-semibold text-gray-800">
+                    {selectedTicket?.description}
                   </Text>
-                </View>
+                  {/* Ticket ID */}
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="font-medium text-gray-500">ID Tiket:</Text>
+                    <View className="flex-row items-center">
+                      <Text className="mr-2 text-gray-800">
+                        {selectedTicket.ticket_id}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => copyToClipboard(`ID Tiket: ${selectedTicket.ticket_id}`)}
+                      >
+                        <Ionicons name="copy-outline" size={16} color="#4F46E5" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-                {/* Photos Section */}
-                <View className="mb-2">
-                  <Text className="mb-2 font-medium text-gray-500">Foto Bukti:</Text>
-                  {isLoadingPhotos ? (
-                    <ActivityIndicator size="small" color="#3B82F6" />
-                  ) : photos.length === 0 ? (
-                    <Text className="text-gray-500">-</Text>
-                  ) : (
-                    <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true}>
+                  {/* Geofence ID */}
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="font-medium text-gray-500">ID Tempat:</Text>
+                    <View className="flex-row items-center">
+                      <Text className="mr-2 text-gray-800">
+                        {selectedTicket.geofence_id}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => copyToClipboard(`ID Tempat (${geofenceLookup[selectedTicket.geofence_id]?.description || ''}): ${selectedTicket.geofence_id}`)}
+                      >
+                        <Ionicons name="copy-outline" size={16} color="#4F46E5" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-                        {photos
-                          .sort((a, b) => {
-                            const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
-                            const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
-                            return indexA - indexB;
-                          })
-                          .map((photo, index) => (
-                            <TouchableOpacity
-                              key={index}
-                              onPress={() => setPreviewPhoto(photo.url)}
-                              style={{
-                                width: "50%",
-                                aspectRatio: 1,
-                                borderRadius: 8,
-                                overflow: "hidden",
-                                backgroundColor: "#f3f4f6",
-                                borderWidth: 1,
-                                borderColor: "#e5e7eb",
-                                marginBottom: 8,
-                              }}
-                            >
-                              <Image
-                                source={{ uri: photo.url }}
-                                style={{ width: "100%", height: "100%" }}
-                                resizeMode="cover"
-                              />
-                              <View
+                  {/* Place Name */}
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="font-medium text-gray-500">Tempat:</Text>
+                    <View className="flex-row items-center">
+                      <Text className="text-gray-800">
+                        {geofenceLookup[selectedTicket.geofence_id]?.description?.length > 30
+                          ? `${geofenceLookup[selectedTicket.geofence_id]?.description.slice(0, 30)}...`
+                          : geofenceLookup[selectedTicket.geofence_id]?.description || 'Tempat tidak ditemukan'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Address */}
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="font-medium text-gray-500">Alamat:</Text>
+                    <View className="flex-row items-center">
+                      <Text
+                        className="text-gray-800"
+                        style={{ flexShrink: 1, flexWrap: 'wrap', maxWidth: 220 }}
+                        numberOfLines={0}
+                      >
+                        {geofenceLookup[selectedTicket.geofence_id]?.address || 'Alamat tidak ditemukan'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Open in Google Maps */}
+                  <TouchableOpacity
+                    className="items-center p-2 mb-2 border border-blue-500 rounded-lg"
+                    onPress={() => {
+                      const coordinates = geofenceLookup[selectedTicket.geofence_id]?.coordinates || [0, 0];
+                      openInGoogleMaps(coordinates);
+                    }}
+                  >
+                    <View className="flex-row items-center gap-x-2">
+                      <Text className="font-medium text-blue-500">
+                        Buka di Google Maps
+                      </Text>
+                      <Ionicons name="open-outline" size={16} color="#3b82f6" />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Status */}
+                  <View className="flex-row justify-between">
+                    <Text className="font-medium text-gray-500">Status:</Text>
+                    <Text
+                      className={`text-sm font-semibold px-2 py-1 rounded ${selectedTicket.status === "assigned"
+                        ? "bg-blue-100 text-blue-600"
+                        : selectedTicket.status === "on_progress"
+                          ? "bg-yellow-100 text-yellow-600"
+                          : selectedTicket.status === "completed"
+                            ? "bg-green-100 text-green-600"
+                            : "bg-red-100 text-red-600"
+                        }`}
+                    >
+                      {selectedTicket.status === "assigned"
+                        ? "Ditugaskan"
+                        : selectedTicket.status === "on_progress"
+                          ? "Berjalan"
+                          : selectedTicket.status === "completed"
+                            ? "Selesai"
+                            : "Dibatalkan"}
+                    </Text>
+                  </View>
+
+                  {/* Photos Section */}
+                  <View className="mb-2">
+                    <Text className="mb-2 font-medium text-gray-500">Foto Bukti:</Text>
+                    {isLoadingPhotos ? (
+                      <ActivityIndicator size="small" color="#3B82F6" />
+                    ) : photos.length === 0 ? (
+                      <Text className="text-gray-500">-</Text>
+                    ) : (
+                      <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true} nestedScrollEnabled={true}>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+                          {photos
+                            .sort((a, b) => {
+                              const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
+                              const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
+                              return indexA - indexB;
+                            })
+                            .map((photo, index) => (
+                              <TouchableOpacity
+                                key={index}
+                                onPress={() => setPreviewPhoto(photo.url)}
                                 style={{
-                                  position: "absolute",
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  backgroundColor: "rgba(0, 0, 0, 0.7)",
-                                  padding: 4,
+                                  width: "50%",
+                                  aspectRatio: 1,
+                                  borderRadius: 8,
+                                  overflow: "hidden",
+                                  backgroundColor: "#f3f4f6",
+                                  borderWidth: 1,
+                                  borderColor: "#e5e7eb",
+                                  marginBottom: 8,
                                 }}
                               >
-                                <Text style={{ color: "white", fontSize: 12, textAlign: "center" }}>
-                                  {getPhotoTitles(selectedTicket)[index] || `Foto ${index + 1}`}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          ))}
-                      </View>
-                    </ScrollView>
-                  )}
-                </View>
+                                <Image
+                                  source={{ uri: photo.url }}
+                                  style={{ width: "100%", height: "100%" }}
+                                  resizeMode="cover"
+                                />
+                                <View
+                                  style={{
+                                    position: "absolute",
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                                    padding: 4,
+                                  }}
+                                >
+                                  <Text style={{ color: "white", fontSize: 12, textAlign: "center" }}>
+                                    {getPhotoTitles(selectedTicket)[index] || `Foto ${index + 1}`}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                        </View>
+                      </ScrollView>
+                    )}
+                  </View>
 
-                {/* Description */}
-                {/* <View className="mb-2">
-                  <Text className="font-medium text-gray-500">Deskripsi:</Text>
-                  <Text className="text-gray-800">{selectedTicket.description}</Text>
-                </View> */}
-
-                {/* Created At */}
-                <View className="flex-row justify-between mb-2">
-                  <Text className="font-medium text-gray-500">Dibuat Pada:</Text>
-                  <Text className="text-gray-800">
-                    {(() => {
-                      const createdAt = new Date(selectedTicket.created_at);
-                      const day = String(createdAt.getDate()).padStart(2, "0");
-                      const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-                      const year = createdAt.getFullYear();
-                      const hours = String(createdAt.getHours()).padStart(2, "0");
-                      const minutes = String(createdAt.getMinutes()).padStart(2, "0");
-                      const seconds = String(createdAt.getSeconds()).padStart(2, "0");
-                      return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
-                    })()}
-                  </Text>
-                </View>
-
-                {/* Updated At */}
-                <View className="flex-row justify-between mb-2">
-                  <Text className="font-medium text-gray-500">Diperbarui Pada:</Text>
-                  <Text className="text-gray-800">
-                    {(() => {
-                      const createdAt = new Date(selectedTicket.updated_at);
-                      const day = String(createdAt.getDate()).padStart(2, "0");
-                      const month = String(createdAt.getMonth() + 1).padStart(2, "0");
-                      const year = createdAt.getFullYear();
-                      const hours = String(createdAt.getHours()).padStart(2, "0");
-                      const minutes = String(createdAt.getMinutes()).padStart(2, "0");
-                      const seconds = String(createdAt.getSeconds()).padStart(2, "0");
-                      return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
-                    })()}
-                  </Text>
-                </View>
-
-                {/* Pada UI detail tiket, tampilkan summary foto pending/failed */}
-                <View style={{ marginVertical: 16 }}>
-                  {(() => {
-                    const summary = getPhotoSummary(selectedTicket.ticket_id);
-                    return (
-                      <View style={{ marginBottom: 8 }}>
-                        <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                          Foto gagal upload: {summary.failed}
-                        </Text>
-                        <Text style={{ color: '#10b981', fontWeight: 'bold' }}>
-                          Foto berhasil upload: {summary.success}
-                        </Text>
-                      </View>
-                    );
-                  })()}
-                  {/* Tombol sinkronisasi */}
-                  <TouchableOpacity
-                    onPress={() => syncTicketPhotos(selectedTicket.ticket_id)}
-                    disabled={isSyncing}
-                    style={{ backgroundColor: isSyncing ? '#d1d5db' : '#2563eb', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
-                      {isSyncing ? `Sinkronisasi... (${syncProgress.current}/${syncProgress.total})` : 'Sinkronkan foto tiket'}
+                  {/* Created At */}
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="font-medium text-gray-500">Dibuat Pada:</Text>
+                    <Text className="text-gray-800">
+                      {(() => {
+                        const createdAt = new Date(selectedTicket.created_at);
+                        const day = String(createdAt.getDate()).padStart(2, "0");
+                        const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                        const year = createdAt.getFullYear();
+                        const hours = String(createdAt.getHours()).padStart(2, "0");
+                        const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                        const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                        return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                      })()}
                     </Text>
+                  </View>
+
+                  {/* Updated At */}
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="font-medium text-gray-500">Diperbarui Pada:</Text>
+                    <Text className="text-gray-800">
+                      {(() => {
+                        const createdAt = new Date(selectedTicket.updated_at);
+                        const day = String(createdAt.getDate()).padStart(2, "0");
+                        const month = String(createdAt.getMonth() + 1).padStart(2, "0");
+                        const year = createdAt.getFullYear();
+                        const hours = String(createdAt.getHours()).padStart(2, "0");
+                        const minutes = String(createdAt.getMinutes()).padStart(2, "0");
+                        const seconds = String(createdAt.getSeconds()).padStart(2, "0");
+                        return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds} WIB`;
+                      })()}
+                    </Text>
+                  </View>
+
+                  {/* Pada UI detail tiket, tampilkan summary foto pending/failed */}
+                  {/* <View style={{ marginVertical: 16 }}>
+                    {(() => {
+                      const summary = getPhotoSummary(selectedTicket.ticket_id);
+                      return (
+                        <View style={{ marginBottom: 8 }}>
+                          <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                            Foto gagal upload: {summary.failed}
+                          </Text>
+                          <Text style={{ color: '#10b981', fontWeight: 'bold' }}>
+                            Foto berhasil upload: {summary.success}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                    {isSyncing && (
+                      <View style={{ alignItems: 'center', marginTop: 8 }}>
+                        <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: 'bold' }}>
+                          Jangan tutup aplikasi atau pindah halaman selama proses sinkronisasi!
+                        </Text>
+                        <Text style={{ color: '#6b7280', fontSize: 12 }}>
+                          Proses ini tidak bisa dihentikan. Estimasi waktu tergantung jumlah foto dan kecepatan internet.
+                        </Text>
+                      </View>
+                    )}
+                  </View> */}
+                </View>
+              )}
+
+              {/* Additional Info Button */}
+              {selectedTicket?.additional_info && (
+                <View style={{ marginBottom: 16 }}>
+                  <TouchableOpacity
+                    onPress={() => setShowAdditionalInfo((prev) => !prev)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: '#f3f4f6',
+                      borderRadius: 8,
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      marginBottom: showAdditionalInfo ? 12 : 0,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontWeight: 'bold', color: '#374151', fontSize: 16 }}>Additional Info</Text>
+                    <Ionicons name={showAdditionalInfo ? 'chevron-up' : 'chevron-down'} size={22} color="#374151" />
                   </TouchableOpacity>
-                  {isSyncing && (
-                    <View style={{ alignItems: 'center', marginTop: 8 }}>
-                      <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: 'bold' }}>
-                        Jangan tutup aplikasi atau pindah halaman selama proses sinkronisasi!
-                      </Text>
-                      <Text style={{ color: '#6b7280', fontSize: 12 }}>
-                        Proses ini tidak bisa dihentikan. Estimasi waktu tergantung jumlah foto dan kecepatan internet.
-                      </Text>
+                  {showAdditionalInfo && (
+                    <View style={{ backgroundColor: '#f9fafb', borderRadius: 8, padding: 12, marginTop: 2 }}>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                        {Object.entries(selectedTicket.additional_info).map(([key, value], idx) => (
+                          <View key={key} style={{ width: '50%', paddingVertical: 4, paddingHorizontal: 6 }}>
+                            <Text style={{ color: '#6b7280', fontWeight: 'bold', fontSize: 13 }}>{key}</Text>
+                            <Text style={{ color: '#222', fontSize: 14 }}>{String(value)}</Text>
+                          </View>
+                        ))}
+                      </View>
                     </View>
                   )}
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Download PDF Button */}
-            <TouchableOpacity
-              className="flex flex-row items-center justify-center p-3 mt-2 border border-blue-500 rounded-lg gap-x-2"
-              onPress={() => {
-                Linking.openURL(`${BASE_URL2}/admin/tickets/pdf/${selectedTicket?.ticket_id}/${selectedTicket?.user_id}/${selectedTicket?.geofence_id}`);
-              }}
-            >
-              <Text className="font-medium text-blue-500">Unduh PDF</Text>
-              <Ionicons name="document-outline" size={18} color="#3B82F6" />
-            </TouchableOpacity>
-
-            {/* Close Button */}
-            <TouchableOpacity
-              className="items-center p-3 mt-2 bg-blue-500 rounded-lg"
-              onPress={() => {
-                setIsModalVisible(false)
-                setPhotos([]);
-              }}
-            >
-              <Text className="font-medium text-white">Tutup</Text>
-            </TouchableOpacity>
+              {/* Download PDF Button */}
+              <TouchableOpacity
+                className="flex flex-row items-center justify-center p-3 border border-blue-500 rounded-lg gap-x-2"
+                style={{ marginBottom: 16, marginTop: 12 }}
+                onPress={() => {
+                  Linking.openURL(`${BASE_URL2}/admin/tickets/pdf/${selectedTicket?.ticket_id}/${selectedTicket?.user_id}/${selectedTicket?.geofence_id}`);
+                }}
+              >
+                <Text className="font-medium text-blue-500">Unduh PDF</Text>
+                <Ionicons name="document-outline" size={18} color="#3B82F6" />
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal >
@@ -1090,6 +1217,26 @@ const TicketsScreen = () => {
           </View>
         </Modal>
       )}
+
+      {/* Modal Preview Sinkronisasi */}
+      <SyncPreviewModal
+        visible={isPreviewModalVisible}
+        onClose={() => setIsPreviewModalVisible(false)}
+        syncableTickets={syncableTickets}
+        selectedTickets={selectedTicketsToSync}
+        onSelectTicket={handleToggleTicket}
+        onSelectAll={handleSelectAllTickets}
+        onSync={handleSyncSelectedTickets}
+        geofenceLookup={geofenceLookup}
+      />
+
+      {/* Modal Progres Sinkronisasi */}
+      <SyncProgressModal
+        visible={isProgressModalVisible}
+        progressState={progressState}
+        syncResultSummary={syncResultSummary}
+        onClose={() => { setIsProgressModalVisible(false); setSyncResultSummary(null); }}
+      />
     </View >
   );
 };
