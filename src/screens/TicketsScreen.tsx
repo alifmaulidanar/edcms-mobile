@@ -1360,7 +1360,7 @@ const TicketItem = React.memo(({
                   data: {
                     user_id: ticket.user_id,
                     username: userData?.username || '',
-                    description: ticket.description,
+                    description: ticket.description || '',
                     geofence_id: ticket.geofence_id,
                     geofence_tag: geofenceItem?.tag || '',
                     started_location: geofenceItem?.coordinates || [0, 0],

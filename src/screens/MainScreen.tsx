@@ -321,14 +321,24 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     // Initial fetch
     fetchData();
     // Set up an interval to refresh data periodically rather than on every change
-    // const refreshInterval = setInterval(fetchData, 30000); // Refresh every 30 seconds
-    const refreshInterval = setInterval(fetchData, 2000); // Refresh every 2 seconds
+    const refreshInterval = setInterval(fetchData, 10000); // Refresh every 10 seconds
+    // const refreshInterval = setInterval(fetchData, 2000); // Refresh every 2 seconds
     return () => {
       isMounted = false;
       clearInterval(refreshInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracking]); // Only re-run when tracking status changes
+
+  // Refetch tickets when network status changes to online
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected) {
+        fetchTicketsWithGeofences();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Handle pull-to-refresh with improved selectedTicket persistence
   const onRefresh = async () => {
