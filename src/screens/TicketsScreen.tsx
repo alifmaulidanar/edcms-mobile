@@ -1123,7 +1123,7 @@ const TicketsScreen = () => {
                     }}
                     activeOpacity={0.8}
                   >
-                    <Text style={{ fontWeight: 'bold', color: '#374151', fontSize: 16 }}>Additional Info</Text>
+                    <Text style={{ fontWeight: 'bold', color: '#374151', fontSize: 16 }}>Informasi Tambahan</Text>
                     <Ionicons name={showAdditionalInfo ? 'chevron-up' : 'chevron-down'} size={22} color="#374151" />
                   </TouchableOpacity>
                   {showAdditionalInfo && (

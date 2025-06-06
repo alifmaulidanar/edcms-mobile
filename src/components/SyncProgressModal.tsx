@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
+import { setStringAsync } from 'expo-clipboard';
 
 interface SyncProgressModalProps {
   visible: boolean;
@@ -15,6 +16,20 @@ interface SyncProgressModalProps {
   syncResultSummary: any[] | null;
   onClose: () => void;
 }
+
+const copyToClipboard = (text: string) => {
+  setStringAsync(text);
+  Alert.alert('ID telah disalin ke clipboard!');
+};
+
+const openInGoogleMaps = (coordinates: [number, number]) => {
+  if (!coordinates || coordinates.length !== 2) return;
+  const [longitude, latitude] = coordinates;
+  const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+  Linking.openURL(url).catch(() => {
+    Alert.alert('Gagal membuka Google Maps');
+  });
+};
 
 const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
   visible,
@@ -73,10 +88,24 @@ const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
               <React.Fragment>
                 <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>Sinkronisasi Selesai</Text>
                 {syncResultSummary && syncResultSummary.map((res: any, idx: number) => (
-                  <View key={res.ticket_id} style={{ marginBottom: 8 }}>
-                    <Text style={{ fontWeight: 'bold', color: '#374151' }}>{res.description}</Text>
-                    <Text style={{ color: '#10b981' }}>Berhasil: {res.success}</Text>
-                    <Text style={{ color: '#ef4444' }}>Gagal: {res.failed}</Text>
+                  <View key={res.ticket.ticket_id} style={{ marginBottom: 12, padding: 10, backgroundColor: '#f3f4f6', borderRadius: 8 }}>
+                    <Text style={{ fontWeight: 'bold', color: '#374151', fontSize: 16 }}>{res.ticket.description}</Text>
+                    <Text style={{ color: '#6b7280', fontSize: 13 }}>ID Tiket: {res.ticket.ticket_id}</Text>
+                    <Text style={{ color: '#6b7280', fontSize: 13 }}>Tempat: {res.geofence?.description || '-'}</Text>
+                    <Text style={{ color: '#6b7280', fontSize: 13 }}>Alamat: {res.geofence?.address || '-'}</Text>
+                    <Text style={{ color: '#6b7280', fontSize: 13 }}>Status: {res.ticket.status}</Text>
+                    <Text style={{ color: '#10b981', fontWeight: 'bold' }}>Berhasil: {res.success}</Text>
+                    <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Gagal: {res.failed}</Text>
+                    <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                      <TouchableOpacity onPress={() => copyToClipboard(res.ticket.ticket_id)} style={{ marginRight: 12 }}>
+                        <Text style={{ color: '#2563eb', fontSize: 13 }}>Copy ID</Text>
+                      </TouchableOpacity>
+                      {res.geofence?.coordinates && (
+                        <TouchableOpacity onPress={() => openInGoogleMaps(res.geofence.coordinates)}>
+                          <Text style={{ color: '#2563eb', fontSize: 13 }}>Buka di Maps</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 ))}
                 <TouchableOpacity

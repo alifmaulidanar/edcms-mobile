@@ -115,6 +115,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
   const [uploadMessage, setUploadMessage] = useState<string>("");
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [isFinishing, setIsFinishing] = useState<boolean>(false);
 
   // Reset state when ticket type changes
   useEffect(() => {
@@ -366,18 +367,41 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
   };
 
   const handleFinishAndUpload = async () => {
-    const totalRequired = config.TOTAL_PHOTOS;
-    if (totalPhotosTaken >= totalRequired) {
-      Alert.alert(
-        'Sinkronisasi Manual',
-        'Foto sudah cukup. Sinkronisasi foto harus dilakukan manual melalui halaman tiket. Lanjutkan ke pengisian berita acara.',
-        [
-          { text: 'OK', onPress: () => onComplete() }
-        ]
-      );
+    if (currentPhase < config.TOTAL_PHASES) {
+      // Tahap selain terakhir: validasi jumlah foto tahap ini
+      if (phasePhotos.length === getPhasePhotoCount(currentPhase)) {
+        setAllPhaseStatus(prev => {
+          const updated = [...prev];
+          updated[currentPhase - 1] = true;
+          return updated;
+        });
+        setCurrentPhase(currentPhase + 1);
+        setPhasePhotos([]);
+      } else {
+        Alert.alert('Foto Belum Cukup', `Ambil semua foto untuk tahap ini sebelum lanjut.`);
+      }
     } else {
-      Alert.alert('Foto Belum Cukup', `Anda harus mengambil minimal ${totalRequired} foto sesuai ketentuan sebelum melanjutkan.`);
-      // Lanjutkan pengambilan foto
+      // Tahap terakhir: validasi total foto
+      const totalRequired = config.TOTAL_PHOTOS;
+      if (totalPhotosTaken >= totalRequired) {
+        setIsFinishing(true);
+        Alert.alert(
+          'Sinkronisasi Manual',
+          'Foto sudah cukup. Sinkronisasi foto harus dilakukan manual melalui halaman tiket. Lanjutkan ke pengisian berita acara.',
+          [
+            {
+              text: 'OK', onPress: () => {
+                setTimeout(() => {
+                  setIsFinishing(false);
+                }, 3000);
+                onComplete();
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Foto Belum Cukup', `Anda harus mengambil minimal ${totalRequired} foto sesuai ketentuan sebelum melanjutkan.`);
+      }
     }
   };
 
@@ -402,7 +426,6 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
               ({config.TOTAL_PHOTOS} foto)
             </Text>
           </View> */}
-
 
           {/* Phase indicator */}
           <View className="flex-row items-center justify-between mt-4 mb-2">
@@ -491,13 +514,11 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
             {phasePhotos.length === getPhasePhotoCount(currentPhase) ? (
               <TouchableOpacity
                 onPress={handleFinishAndUpload}
-                // disabled={isUploading || !isConnected}
-                // className={`items-center px-8 py-4 my-2 rounded-full ${isUploading || !isConnected ? "bg-gray-300" : "bg-blue-500"}`}
-                disabled={isUploading}
-                className={`items-center px-8 py-4 my-2 rounded-full ${isUploading ? "bg-gray-300" : "bg-blue-500"}`}
+                disabled={isUploading || isFinishing}
+                className={`items-center px-8 py-4 my-2 rounded-full ${(isUploading || isFinishing) ? "bg-gray-300" : "bg-blue-500"}`}
                 activeOpacity={0.7}
               >
-                {isUploading ? (
+                {isUploading || isFinishing ? (
                   <ActivityIndicator color="white" />
                 ) : (
                   <Text className="text-xl font-bold text-white">
@@ -511,8 +532,6 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
               <>
                 <TouchableOpacity
                   onPress={handleTakePhoto}
-                  // disabled={isPhotoProcessed || !isConnected}
-                  // className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed || !isConnected ? "bg-gray-300" : "bg-[#059669]"}`}
                   disabled={isPhotoProcessed}
                   className={`items-center px-8 py-4 my-2 rounded-full ${isPhotoProcessed ? "bg-gray-300" : "bg-[#059669]"}`}
                   activeOpacity={0.7}
@@ -572,6 +591,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
           {!isUploading && (
             <TouchableOpacity
               onPress={handleCloseModal}
+              disabled={isFinishing}
               className="items-center px-4 py-2 mt-2 bg-gray-400 rounded-full"
               activeOpacity={0.7}
             >

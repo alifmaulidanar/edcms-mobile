@@ -9,20 +9,17 @@ import NetInfo from '@react-native-community/netinfo';
 import { getCurrentPositionAsync } from 'expo-location';
 import { RadioButton, Checkbox } from 'react-native-paper';
 import BackgroundJob from 'react-native-background-actions';
-// import { requestPermissionsAsync } from 'expo-media-library';
 import { startUploadService } from "../utils/backgroundUploader";
+import { startTicketNew, stopTicketNew } from "../utils/noRadar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// import DateTimePicker from '@react-native-community/datetimepicker';
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
-import { getTicketsWithGeofences, updateTicketExtras, getUpdatedTicketStatus } from '../api/tickets';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
-import { startTicketNew, stopTicketNew } from "../utils/noRadar";
-import { getQueueContents, getExtrasQueueContents } from '../utils/offlineQueue';
+import { getTicketsWithGeofences, updateTicketExtras, getUpdatedTicketStatus } from '../api/tickets';
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from "react-native";
-import { enqueueTicketAction, enqueueTicketExtras, processTicketActionQueue, processTicketExtrasQueue, setupTicketQueueNetInfo, hasPendingTicketActions, hasPendingTicketExtras, TicketActionQueueItem } from '../utils/offlineQueue';
+import { enqueueTicketAction as enqueueTicketActionQueue, hasPendingTicketActions as hasPendingTicketActionsQueue, getQueueContents as getQueueContentsQueue, TicketActionQueueItem as TicketActionQueueItemV2, setupTicketQueueNetInfo, processTicketActionQueue } from '../utils/ticketActionQueue';
 
 /**
  * Gets the selected ticket from AsyncStorage
@@ -91,14 +88,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [hasPendingActions, setHasPendingActions] = useState(false);
   const [hasPendingExtras, setHasPendingExtras] = useState(false);
   const [offlineLogModalVisible, setOfflineLogModalVisible] = useState(false);
-  const [offlineActionLog, setOfflineActionLog] = useState<TicketActionQueueItem[]>([]);
-  const [offlineExtrasLog, setOfflineExtrasLog] = useState<any[]>([]);
-  const [isLoadingOfflineLog, setIsLoadingOfflineLog] = useState(false);
+  const [offlineActionLog, setOfflineActionLog] = useState<TicketActionQueueItemV2[]>([]);
   const [offlinePhotoLog, setOfflinePhotoLog] = useState([]);
+  const [isLoadingOfflineLog, setIsLoadingOfflineLog] = useState(false);
   const [isLoadingOfflinePhotoLog, setIsLoadingOfflinePhotoLog] = useState(false);
-  // const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
-  // const [currentDateField, setCurrentDateField] = useState<string>('');
-
+  const [isWorking, setIsWorking] = useState<boolean>(false);
+  const [pendingEndLocation, setPendingEndLocation] = useState<[number, number] | null>(null);
+  const [pendingEndAt, setPendingEndAt] = useState<string | null>(null);
   // Get user data from Redux store
   const userData = useSelector((state: RootState) => state.user);
 
@@ -150,8 +146,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           }
         }
         // Check pending queue items for UI indicators
-        setHasPendingActions(await hasPendingTicketActions());
-        setHasPendingExtras(await hasPendingTicketExtras());
+        setHasPendingActions(await hasPendingTicketActionsQueue());
+        setHasPendingExtras(await hasPendingTicketActionsQueue());
       } catch (error: any) {
         handleError(`Init error: ${error}`);
       }
@@ -159,20 +155,19 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     init();
 
     // Setup network listener for queue processing
-    const unsubscribe = setupTicketQueueNetInfo(async (processed, stillPending) => {
-      // Update UI when queue items are processed
-      if (processed) {
-        setHasPendingActions(await hasPendingTicketActions());
-        setHasPendingExtras(await hasPendingTicketExtras());
-        onRefresh(); // Refresh ticket list if any items were processed
-      }
-    });
+    // const unsubscribe = setupTicketQueueNetInfo(async (processed, stillPending) => {
+    //   // Update UI when queue items are processed
+    //   if (processed) {
+    //     setHasPendingActions(await hasPendingTicketActionsQueue());
+    //     setHasPendingExtras(await hasPendingTicketActionsQueue());
+    //     onRefresh(); // Refresh ticket list if any items were processed
+    //   }
+    // });
 
     // Try to process queues on mount
-    processTicketActionQueue();
-    processTicketExtrasQueue();
+    // processTicketActionQueueQueue();
     return () => {
-      unsubscribe();
+      // unsubscribe();
     };
   }, []);
 
@@ -222,33 +217,47 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);
 
       // --- Advanced logic for selectedTicket persistence ---
-      if (tracking || multiPhasePhotoModalVisible || ticketExtrasModalVisible) {
-        handleLog("Critical operation in progress - preserving selectedTicket state");
-        return;
-      }
+      // if (tracking || multiPhasePhotoModalVisible || ticketExtrasModalVisible) {
+      //   handleLog("Critical operation in progress - preserving selectedTicket state");
+      //   return;
+      // }
 
       if (storedTicket) {
         const updatedTicket = allTicketsWithGeofences.find(t => t.ticket_id === storedTicket.ticket_id);
         if (updatedTicket) {
           // Perbarui status tiket di AsyncStorage jika berbeda
           if (updatedTicket.status !== storedTicket.status) {
-            await setSelectedTicketToStorage(updatedTicket);
-          }
-          // Always update the state with the latest data from API to ensure we have current status
-          handleLog(`Restoring selectedTicket from AsyncStorage: ${storedTicket.ticket_id}`);
-          // Only update if there's actual data changes to avoid infinite loops
-          if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
+            // Jika sedang pengerjaan, update status lokal saja, JANGAN hapus
+            if (isWorking) {
+              const mergedTicket = { ...storedTicket, status: updatedTicket.status };
+              await setSelectedTicketToStorage(mergedTicket);
+              setSelectedTicket(mergedTicket);
+              setCurrentTicketID(mergedTicket.ticket_id);
+              handleLog(`Updated local selectedTicket status to match server: ${mergedTicket.status}`);
+            } else {
+              await setSelectedTicketToStorage(updatedTicket);
+              setSelectedTicket(updatedTicket);
+              setCurrentTicketID(updatedTicket.ticket_id);
+              handleLog(`Restoring selectedTicket from AsyncStorage: ${storedTicket.ticket_id}`);
+            }
+          } else if (JSON.stringify(updatedTicket) !== JSON.stringify(selectedTicket)) {
             setSelectedTicket(updatedTicket);
             setCurrentTicketID(updatedTicket.ticket_id);
-            // Save the updated ticket back to storage to keep it in sync
             await setSelectedTicketToStorage(updatedTicket);
           }
-        } else if (!tracking) {
-          // If the stored ticket no longer exists and we're not tracking, clear it
-          handleLog("Stored ticket no longer exists and not tracking - clearing selectedTicket");
-          setSelectedTicket(null);
-          setCurrentTicketID(null);
-          await setSelectedTicketToStorage(null);
+        } else {
+          // --- PERBAIKAN: Jangan hapus selectedTicket jika sedang tracking atau isWorking ---
+          if (!tracking && !isWorking) {
+            // Jika tidak sedang pengerjaan, boleh hapus
+            handleLog("Stored ticket no longer exists and not tracking/working - clearing selectedTicket");
+            setSelectedTicket(null);
+            setCurrentTicketID(null);
+            await setSelectedTicketToStorage(null);
+          } else {
+            // Jika sedang tracking/working, JANGAN hapus selectedTicket!
+            handleLog("Stored ticket not found in server fetch, but still tracking/working - KEEP selectedTicket");
+            // Biarkan selectedTicket tetap ada agar user bisa menyelesaikan proses
+          }
         }
         return;
       }
@@ -267,10 +276,23 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             await setSelectedTicketToStorage(updatedTicket);
             handleLog(`Updated selectedTicket data and saved to storage: ${updatedTicket.ticket_id}`);
           }
+        } else {
+          // --- PERBAIKAN: Jangan hapus selectedTicket jika sedang tracking atau isWorking ---
+          if (!tracking && !isWorking) {
+            // If the ticket no longer exists and we're not tracking/working, clear everything
+            handleLog("selectedTicket no longer exists in tickets list and not tracking/working - clearing state and storage");
+            setSelectedTicket(null);
+            setCurrentTicketID(null);
+            await setSelectedTicketToStorage(null);
+          } else {
+            // Jika sedang tracking/working, JANGAN hapus selectedTicket!
+            handleLog("selectedTicket not found in server fetch, but still tracking/working - KEEP selectedTicket");
+            // Biarkan selectedTicket tetap ada agar user bisa menyelesaikan proses
+          }
         }
-      } else if (!tracking) {
-        // If the ticket no longer exists and we're not tracking, clear everything
-        handleLog("selectedTicket no longer exists in tickets list and not tracking - clearing state and storage");
+      } else if (!tracking && !isWorking) {
+        // If the ticket no longer exists and we're not tracking/working, clear everything
+        handleLog("selectedTicket no longer exists in tickets list and not tracking/working - clearing state and storage");
         setSelectedTicket(null);
         setCurrentTicketID(null);
         await setSelectedTicketToStorage(null);
@@ -278,7 +300,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     } catch (error: any) {
       handleError(`Error in optimized fetch: ${error.message}`);
     }
-  }, [userData, tracking, multiPhasePhotoModalVisible, ticketExtrasModalVisible]);
+  }, [userData, tracking, multiPhasePhotoModalVisible, ticketExtrasModalVisible, isWorking]);
 
   // Fetch tickets using the optimized method
   useEffect(() => {
@@ -299,7 +321,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     // Initial fetch
     fetchData();
     // Set up an interval to refresh data periodically rather than on every change
-    const refreshInterval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    // const refreshInterval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    const refreshInterval = setInterval(fetchData, 2000); // Refresh every 2 seconds
     return () => {
       isMounted = false;
       clearInterval(refreshInterval);
@@ -364,7 +387,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         await AsyncStorage.setItem("startTime", startTime.toString());
         // Use our helper function for more consistent handling
         await setSelectedTicketToStorage(selectedTicket);
-        await enqueueTicketAction({
+        await enqueueTicketActionQueue({
           type: 'start',
           ticketId: selectedTicket.ticket_id,
           data: {
@@ -380,6 +403,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         });
         handleLog('Trip started (async)');
         setTracking(true); // Optimistic UI
+        setIsWorking(true);
+        await AsyncStorage.setItem("isWorking", "true");
         return;
       }
       // Online: process directly
@@ -418,42 +443,21 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     // Ambil lokasi terbaru sebelum buka modal foto
     let ended_location: [number, number] = [0, 0];
     let ended_at = new Date().toISOString();
-    let latestLocation = null;
     try {
-      try {
-        const location = await getCurrentPositionAsync({});
-        ended_location = [location.coords.longitude, location.coords.latitude];
-        latestLocation = location;
-        setCurrentLocation(location); // update state supaya modal foto dapat lokasi valid
-      } catch (locErr) {
-        if (currentLocation && currentLocation.coords) {
-          ended_location = [currentLocation.coords.longitude, currentLocation.coords.latitude];
-          latestLocation = currentLocation;
-        }
+      const location = await getCurrentPositionAsync({});
+      ended_location = [location.coords.longitude, location.coords.latitude];
+      setCurrentLocation(location);
+    } catch (locErr) {
+      if (currentLocation && currentLocation.coords) {
+        ended_location = [currentLocation.coords.longitude, currentLocation.coords.latitude];
       }
-      // Validasi koordinat
-      if (!ended_location || ended_location[0] === 0 && ended_location[1] === 0) {
-        handleError('Tidak dapat mengambil koordinat lokasi selesai. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
-        Alert.alert('Error', 'Tidak dapat mengambil koordinat lokasi selesai. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
-        setIsCompleting(false);
-        return;
-      }
-    } catch (e) {
-      handleError('Gagal mengambil lokasi selesai, gunakan default 0,0');
     }
-    if (!isConnected) {
-      await enqueueTicketAction({
-        type: 'stop',
-        ticketId: ticket_id,
-        data: { ended_location, ended_at },
-        createdAt: Date.now(),
-      });
-    } else {
-      await stopTicketNew(ticket_id, ended_location as [number, number], ended_at);
-    }
-    // Buka modal foto, pastikan currentLocation sudah terupdate
+    setPendingEndLocation(ended_location);
+    setPendingEndAt(ended_at);
     setMultiPhasePhotoModalVisible(true);
     setIsCompleting(false);
+    setIsWorking(false);
+    await AsyncStorage.removeItem("isWorking");
   };
 
   // const handleCancel = async () => {
@@ -794,9 +798,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       if (!canMakeNetworkRequest()) {
         // If offline, add to queue
         handleLog(`No internet connection. Adding ticket extras to offline queue for ticket: ${selectedTicket?.ticket_id}`);
-        await enqueueTicketExtras({
+        await enqueueTicketActionQueue({
+          type: 'extras',
           ticketId: selectedTicket?.ticket_id || "",
-          extrasData: processedData,
+          data: processedData,
           createdAt: Date.now()
         });
         handleLog(`Ticket extras added to queue successfully for ticket: ${selectedTicket?.ticket_id}`);
@@ -805,6 +810,25 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         await updateTicketExtras(selectedTicket?.ticket_id || "", processedData);
         handleLog(`Ticket extras submitted directly for ticket: ${selectedTicket?.ticket_id}`);
       }
+
+      let ended_location = pendingEndLocation || [0, 0];
+      let ended_at = pendingEndAt || new Date().toISOString();
+      // Validasi koordinat
+      if (!ended_location || ended_location[0] === 0 && ended_location[1] === 0) {
+        handleError('Tidak dapat mengambil koordinat lokasi selesai. Pastikan GPS aktif dan aplikasi mendapat izin lokasi.');
+      }
+      // Update status tiket/trip ke selesai
+      if (!canMakeNetworkRequest()) {
+        await enqueueTicketActionQueue({
+          type: 'stop',
+          ticketId: selectedTicket?.ticket_id || "",
+          data: { ended_location, ended_at },
+          createdAt: Date.now(),
+        });
+      } else {
+        await stopTicketNew(selectedTicket?.ticket_id || "", ended_location as [number, number], ended_at);
+      }
+      handleLog(`Status tiket/trip diupdate ke selesai setelah berita acara untuk ticket: ${selectedTicket?.ticket_id}`);
 
       // Clear location cache to ensure fresh data on next use
       clearLocationCache();
@@ -818,7 +842,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         } else {
           alert("Data berhasil disimpan! Tiket telah ditandai selesai.");
         }
-      }, 1000);
+      }, 500);
       // Reset states
       setTracking(false);
       setTime(0);
@@ -925,8 +949,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       });
 
       // Update pending extras status and refresh ticket list
-      setHasPendingExtras(await hasPendingTicketExtras());
+      setHasPendingExtras(await hasPendingTicketActionsQueue());
       onRefresh();
+      setPendingEndLocation(null);
+      setPendingEndAt(null);
     } catch (error) {
       handleError(`Error submitting ticket extras: ${error}`);
       setIsSubmittingTicketExtras(false);
@@ -965,37 +991,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     });
     return lookup;
   }, [geofence]);
-  // const handleShowDatePicker = (fieldName: string) => {
-  //   setCurrentDateField(fieldName);
-  //   setShowDatePicker(true);
-  // };
-
-  // // Format date for display
-  // const formatDateForDisplay = (isoString: string | undefined): string => {
-  //   if (!isoString) return "YYYY-MM-DD";
-  //   try {
-  //     return moment(isoString)
-  //       .tz("Asia/Jakarta")
-  //       .format("DD MMM YYYY");
-  //   } catch (error) {
-  //     return "YYYY-MM-DD";
-  //   }
-  // };
-  // const handleDateChange = (event: any, selectedDate?: Date) => {
-  //   if (Platform.OS === 'android') {
-  //     setShowDatePicker(false);
-  //   }
-  //   if (selectedDate) {
-  //     const fieldToUpdate = currentDateField;
-  //     const formattedDate = selectedDate.toISOString();
-  //     handleInputChangeTicketExtras(fieldToUpdate, formattedDate);
-  //   }
-  //   if (Platform.OS === 'ios') {
-  //     setTimeout(() => {
-  //       setShowDatePicker(false);
-  //     }, 200);
-  //   }
-  // };
 
   const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
     if (!ticket || !ticket?.additional_info) return "default";
@@ -1018,8 +1013,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     const checkPending = async () => {
-      setHasPendingActions(await hasPendingTicketActions());
-      setHasPendingExtras(await hasPendingTicketExtras());
+      setHasPendingActions(await hasPendingTicketActionsQueue());
+      setHasPendingExtras(await hasPendingTicketActionsQueue());
     };
     checkPending();
     const interval = setInterval(checkPending, 10000);
@@ -1030,16 +1025,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     setIsLoadingOfflineLog(true);
     setIsLoadingOfflinePhotoLog(true);
     try {
-      const actions = await getQueueContents();
-      const extras = await getExtrasQueueContents();
+      const actions = await getQueueContentsQueue();
       setOfflineActionLog(actions);
-      setOfflineExtrasLog(extras);
       // Load photo upload queue
       const rawPhotoQueue = await AsyncStorage.getItem('uploadQueue');
       setOfflinePhotoLog(rawPhotoQueue ? JSON.parse(rawPhotoQueue) : []);
     } catch (e) {
       setOfflineActionLog([]);
-      setOfflineExtrasLog([]);
       setOfflinePhotoLog([]);
     }
     setIsLoadingOfflineLog(false);
@@ -1057,6 +1049,62 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   //   await AsyncStorage.removeItem('uploadQueue');
   //   await loadOfflineLog();
   // };
+
+  // Tambahkan useEffect untuk trigger pemrosesan queue async storage
+  useEffect(() => {
+    // Handler untuk setiap item queue
+    const handler = async (item: TicketActionQueueItemV2) => {
+      switch (item.type) {
+        case 'start':
+          await startTicketNew(
+            item.data.user_id,
+            item.data.username,
+            item.ticketId,
+            item.data.description,
+            item.data.geofence_id,
+            item.data.geofence_tag,
+            item.data.started_location,
+            item.data.started_at
+          );
+          break;
+        case 'stop':
+          await stopTicketNew(item.ticketId, item.data.ended_location, item.data.ended_at);
+          break;
+        // case 'cancel':
+        // break;
+        case 'extras':
+          await updateTicketExtras(item.ticketId, item.data);
+          break;
+        default:
+          throw new Error('Unknown action type');
+      }
+    };
+    // Proses queue saat mount
+    processTicketActionQueue(handler);
+    // Listen NetInfo
+    const unsubscribe = setupTicketQueueNetInfo(handler, async (processed) => {
+      if (processed) {
+        setHasPendingActions(await hasPendingTicketActionsQueue());
+        setHasPendingExtras(await hasPendingTicketActionsQueue());
+        onRefresh();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // useEffect untuk load isWorking dari AsyncStorage saat mount
+  useEffect(() => {
+    const loadIsWorking = async () => {
+      const val = await AsyncStorage.getItem("isWorking");
+      setIsWorking(val === "true");
+    };
+    loadIsWorking();
+  }, []);
+
+  // useEffect untuk simpan isWorking ke AsyncStorage setiap kali berubah
+  useEffect(() => {
+    AsyncStorage.setItem("isWorking", isWorking ? "true" : "false");
+  }, [isWorking]);
 
   return (
     <ScrollView
@@ -1114,10 +1162,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               <Text className="mb-2 font-bold text-gray-700">Aksi Tiket (Start/Stop/Cancel):</Text>
               {isLoadingOfflineLog ? (
                 <ActivityIndicator color="#059669" />
-              ) : offlineActionLog.length === 0 ? (
+              ) : offlineActionLog.filter(item => item.type !== 'extras').length === 0 ? (
                 <Text className="mb-2 text-gray-500">Tidak ada aksi offline.</Text>
               ) : (
-                offlineActionLog.map((item, idx) => (
+                offlineActionLog.filter(item => item.type !== 'extras').map((item, idx) => (
                   <View key={idx} className="p-2 mb-2 bg-gray-100 rounded">
                     <Text className="text-xs text-gray-700">[{item.type?.toUpperCase()}] Ticket ID: {item.ticketId}</Text>
                     <Text className="text-xs text-gray-500">Waktu: {item.createdAt ? moment(item.createdAt).format('DD/MM/YYYY HH:mm:ss') : '-'}</Text>
@@ -1128,10 +1176,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               <Text className="mt-4 mb-2 font-bold text-gray-700">Berita Acara (Extras):</Text>
               {isLoadingOfflineLog ? (
                 <ActivityIndicator color="#059669" />
-              ) : offlineExtrasLog.length === 0 ? (
+              ) : offlineActionLog.filter(item => item.type === 'extras').length === 0 ? (
                 <Text className="mb-2 text-gray-500">Tidak ada berita acara offline.</Text>
               ) : (
-                offlineExtrasLog.map((item, idx) => (
+                offlineActionLog.filter(item => item.type === 'extras').map((item, idx) => (
                   <View key={idx} className="p-2 mb-2 bg-gray-100 rounded">
                     <Text className="text-xs text-gray-700">[EXTRAS] Ticket ID: {item.ticketId}</Text>
                     <Text className="text-xs text-gray-500">Waktu: {item.createdAt ? moment(item.createdAt).format('DD/MM/YYYY HH:mm:ss') : '-'}</Text>

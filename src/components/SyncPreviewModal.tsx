@@ -49,6 +49,10 @@ const SyncPreviewModal: React.FC<SyncPreviewModalProps> = ({
               <Ionicons name="close" size={28} color="#374151" />
             </TouchableOpacity>
           </View>
+          <View className='flex-col px-6'>
+            <Text className="text-gray-500">Total Tiket: {syncableTickets.length}</Text>
+            <Text className="text-gray-500">Total Foto: {syncableTickets.reduce((acc, row) => acc + row.photos.length, 0)}</Text>
+          </View>
           <RNScrollView style={{ maxHeight: 400, paddingHorizontal: 16 }}>
             <TouchableOpacity
               onPress={onSelectAll}
@@ -77,8 +81,8 @@ const SyncPreviewModal: React.FC<SyncPreviewModalProps> = ({
                       style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{row.ticket.description}</Text>
-                        <Text style={{ color: '#6b7280', fontSize: 13 }}>ID: {row.ticket.ticket_id}</Text>
+                        <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{row.ticket.description || '-'}</Text>
+                        <Text style={{ color: '#6b7280', fontSize: 13 }}>ID: {row.ticket.ticket_id || '-'}</Text>
                         <Text style={{ color: '#6b7280', fontSize: 13 }}>
                           Tempat: {geofenceLookup[row.ticket.geofence_id]?.description || '-'}
                         </Text>
