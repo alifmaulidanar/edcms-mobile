@@ -258,9 +258,8 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
 
       const result = await launchCameraAsync({
         mediaTypes: 'images',
-        quality: 0.4,
+        quality: 0.3,
         allowsEditing: false,
-        exif: false,
       });
       if (!result.canceled && result.assets.length > 0) {
         const photoUri = result.assets[0].uri;

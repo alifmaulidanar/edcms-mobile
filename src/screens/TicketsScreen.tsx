@@ -19,6 +19,7 @@ import { getPendingPhotos, updatePhotoStatus, deletePhoto, insertUploadAuditLog,
 import * as FileSystem from 'expo-file-system';
 import SyncPreviewModal from '../components/SyncPreviewModal';
 import SyncProgressModal from '../components/SyncProgressModal';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
 
@@ -645,6 +646,7 @@ const TicketsScreen = () => {
     }
     setIsLoadingPhotos(true);
     const data = await getSingleTicket(ticketId);
+    console.log({ data });
     setPhotos(data.photos);
     setIsLoadingPhotos(false);
     return data;
@@ -713,6 +715,7 @@ const TicketsScreen = () => {
         let retry = 0;
         let uploaded = false;
         let photo = row.photos[pIdx];
+        let compressedUri = null;
         while (retry < 3 && !uploaded) {
           try {
             // Validasi file
@@ -724,13 +727,24 @@ const TicketsScreen = () => {
               ticketResult.failed++;
               break;
             }
+            // Image compression
+            try {
+              const compressed = await manipulateAsync(
+                photo.local_uri,
+                [{ resize: { width: 800 } }],
+                { compress: 0.3, format: SaveFormat.JPEG }
+              );
+              compressedUri = compressed.uri;
+            } catch (err) {
+              handleLog(`[SYNC] Gagal kompres foto, upload original: ${photo.local_uri}`);
+              compressedUri = photo.local_uri;
+            }
             // Upload ke server
             const formData = new FormData();
-            formData.append('photo', { uri: photo.local_uri, name: `photo_${photo.queue_order}.jpg`, type: 'image/jpeg' } as any);
+            formData.append('photo', { uri: compressedUri, name: `photo_${photo.queue_order}.jpg`, type: 'image/jpeg' } as any);
             formData.append('queue_order', photo.queue_order.toString());
             formData.append('uuid', photo.id ?? '');
             formData.append('ticket_id', photo.ticket_id ?? '');
-            // Ambil user_id dari Redux/userData, fallback ke photo.user_id
             const userIdHeader = userData?.user_id || photo.user_id || '';
             const response = await fetch(`${BASE_URL2}/admin/tickets/photos/new/upload/${photo.ticket_id}`, {
               method: 'POST',
@@ -769,6 +783,10 @@ const TicketsScreen = () => {
               ticketResult.failed++;
             } else {
               await new Promise(res => setTimeout(res, 100 * retry));
+            }
+          } finally {
+            if (compressedUri && compressedUri !== photo.local_uri) {
+              try { await FileSystem.deleteAsync(compressedUri, { idempotent: true }); } catch { }
             }
           }
         }
@@ -998,9 +1016,21 @@ const TicketsScreen = () => {
                         <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
                           {photos
                             .sort((a, b) => {
-                              const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
-                              const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
-                              return indexA - indexB;
+                              // const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
+                              // const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
+                              // return indexA - indexB;
+                              // If both have queue_order, sort ascending
+                              if (a.queue_order != null && b.queue_order != null) {
+                                return a.queue_order - b.queue_order;
+                              }
+                              // If both don't have queue_order, sort by filename
+                              if (a.queue_order == null && b.queue_order == null) {
+                                const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
+                                const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
+                                return indexA - indexB;
+                              }
+                              // If only one has queue_order, sort by queue_order
+                              return a.queue_order == null ? 1 : -1;
                             })
                             .map((photo, index) => (
                               <TouchableOpacity
