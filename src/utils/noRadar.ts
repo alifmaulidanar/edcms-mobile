@@ -1,8 +1,8 @@
 import { generateId } from './utils';
-import { updateTicket } from '../api/tickets';
-import { cancelTripNoRadar, createTripNoRadar, endTripNoRadar, getTripIdByTicketId } from '../api/trip';
-import { log as handleLog, error as handleError } from '../utils/logHandler';
 import supabase from '../utils/supabase';
+import { updateTicket } from '../api/tickets';
+import { log as handleLog, error as handleError } from '../utils/logHandler';
+import { cancelTripNoRadar, createTripNoRadar, endTripNoRadar, getTripIdByTicketId } from '../api/trip';
 
 /**
  * Started ticket and trip without Radar
@@ -122,7 +122,7 @@ export const stopTicketNew = async (ticket_id: string, ended_location?: [number,
 /**
  * Cancel ticket and trip without Radar
  */
-export const cancelTripNew = async (ticket_id: string) => {
+const cancelTripNew = async (ticket_id: string) => {
   try {
     if (!ticket_id) {
       handleError('Invalid ticket ID');

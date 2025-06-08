@@ -3,7 +3,7 @@ import supabase from "../utils/supabase";
 import { error as handleError } from '../utils/logHandler';
 
 // Get geofences by user ID from backend API
-export const getAllGeofences = async (): Promise<Geofence[]> => {
+const getAllGeofences = async (): Promise<Geofence[]> => {
   try {
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL as string}/geofences`, {
       method: "GET",
@@ -32,7 +32,7 @@ export const getAllGeofences = async (): Promise<Geofence[]> => {
  * @param externalIds Array of geofence external IDs to fetch
  * @returns Array of Geofence objects that match the requested IDs
  */
-export const getGeofencesByIds = async (externalIds: string[]): Promise<Geofence[]> => {
+const getGeofencesByIds = async (externalIds: string[]): Promise<Geofence[]> => {
   try {
     if (!externalIds || externalIds.length === 0) {
       return [];

@@ -1,20 +1,6 @@
 import React from 'react';
+import { SyncProgressModalProps } from '../types';
 import { Modal, View, Text, TouchableOpacity } from 'react-native';
-
-interface SyncProgressModalProps {
-  visible: boolean;
-  progressState: {
-    currentTicketIdx: number;
-    currentPhotoIdx: number;
-    totalTickets: number;
-    totalPhotos: number;
-    currentTicket: any;
-    currentPhoto: any;
-    status: string;
-  };
-  syncResultSummary: any[] | null;
-  onClose: () => void;
-}
 
 const SyncProgressModal: React.FC<SyncProgressModalProps> = ({
   visible,

@@ -1,25 +1,25 @@
 import { RootState } from "../store";
 import { useSelector } from "react-redux";
 import { Geofence, Ticket } from "../types";
-import { setStringAsync } from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
+import { setStringAsync } from "expo-clipboard";
 import { Picker } from "@react-native-picker/picker";
+import NetInfo from '@react-native-community/netinfo';
 import { useNavigation } from '@react-navigation/native';
+import { TICKET_CONFIG } from "../utils/ticketPhotoConfig";
+import SyncPreviewModal from '../components/SyncPreviewModal';
+import SyncProgressModal from '../components/SyncProgressModal';
+import { enqueueTicketAction } from "../utils/ticketActionQueue";
 import { TabView, SceneMap, TabBar } from "react-native-tab-view";
-import { downloadAsync, documentDirectory } from 'expo-file-system';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { getSingleTicket, getTicketsWithGeofences } from "../api/tickets";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { requestPermissionsAsync, createAssetAsync } from 'expo-media-library';
-import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator, TouchableWithoutFeedback, ScrollView as RNScrollView, BackHandler } from "react-native";
-import { enqueueTicketAction } from '../utils/offlineQueue';
-import NetInfo from '@react-native-community/netinfo';
+import { getInfoAsync, deleteAsync, downloadAsync, documentDirectory } from 'expo-file-system';
 import { getPendingPhotos, updatePhotoStatus, deletePhoto, insertUploadAuditLog, initTicketPhotoTable, initUploadAuditLogTable } from '../utils/ticketPhotoDB';
-import * as FileSystem from 'expo-file-system';
-import SyncPreviewModal from '../components/SyncPreviewModal';
-import SyncProgressModal from '../components/SyncProgressModal';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { View, Text, TouchableOpacity, ScrollView, Linking, Modal, RefreshControl, Dimensions, Image, Alert, TextInput, FlatList, ActivityIndicator, TouchableWithoutFeedback, BackHandler } from "react-native";
 
 const BASE_URL2 = process.env.EXPO_PUBLIC_API_BASE_URL_V2;
 
@@ -33,20 +33,15 @@ const openInGoogleMaps = (coordinates: [number, number]) => {
     handleError("Invalid coordinates");
     return;
   }
-
   const [longitude, latitude] = coordinates;
   const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-
-  Linking.openURL(url).catch((err) =>
-    handleError(`Error opening Google Maps: ${err}`)
-  );
+  Linking.openURL(url).catch((err) => handleError(`Error opening Google Maps: ${err}`));
 };
 
 const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
   if (!ticket || !ticket?.additional_info) return "default";
   const tipeTiket = (ticket?.additional_info?.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
   const edcService = (ticket?.additional_info?.edc_service || "").toString().toLowerCase();
-
   if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
     return "pullout";
   }
@@ -74,28 +69,20 @@ const TicketsScreen = () => {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isAnyTicketInProgress, setIsAnyTicketInProgress] = useState(false);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isNetInfoSafe, setIsNetInfoSafe] = useState(false);
+  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false);
+  const [syncableTickets, setSyncableTickets] = useState<any[]>([]); // [{ticket, photos: [{...}]}]
+  const [selectedTicketsToSync, setSelectedTicketsToSync] = useState<string[]>([]);
+  const [showAdditionalInfo, setShowAdditionalInfo] = useState<boolean>(false);
+  const [isProgressModalVisible, setIsProgressModalVisible] = useState(false);
+  const [syncResultSummary, setSyncResultSummary] = useState<any>(null);
   const [routes] = useState([
     { key: "active", title: "Aktif" },
     { key: "on_progress", title: "Berjalan" },
     { key: "complete", title: "Selesai" },
     { key: "canceled", title: "Batal" },
   ]);
-
-  // Tambahkan state untuk modal sinkronisasi
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
-
-  // Tambahkan state untuk NetInfo
-  const [isNetInfoSafe, setIsNetInfoSafe] = useState(false);
-
-  // Tambahkan state untuk modal preview
-  const [isPreviewModalVisible, setIsPreviewModalVisible] = useState(false);
-  const [syncableTickets, setSyncableTickets] = useState<any[]>([]); // [{ticket, photos: [{...}]}]
-  const [selectedTicketsToSync, setSelectedTicketsToSync] = useState<string[]>([]);
-  const [accordionOpen, setAccordionOpen] = useState<string | null>(null);
-
-  // Tambahkan state untuk modal progres
-  const [isProgressModalVisible, setIsProgressModalVisible] = useState(false);
   const [progressState, setProgressState] = useState({
     currentTicketIdx: 0,
     currentPhotoIdx: 0,
@@ -105,85 +92,8 @@ const TicketsScreen = () => {
     currentPhoto: null as any,
     status: 'idle', // 'uploading', 'done'
   });
-  const [syncResultSummary, setSyncResultSummary] = useState<any>(null);
-
-  // Tambahkan state untuk showAdditionalInfo
-  const [showAdditionalInfo, setShowAdditionalInfo] = useState<boolean>(false);
-
-  // Photo configuration based on ticket type
-  const TICKET_CONFIG = {
-    pullout: {
-      TOTAL_PHASES: 1,
-      PHOTOS_PER_PHASE: [4],
-      TOTAL_PHOTOS: 4,
-      photoTitles: [
-        'Foto EDC',
-        'Foto BAST',
-        'Foto PIC Merchant',
-        'Foto Struk #1',
-      ]
-    },
-    single: {
-      TOTAL_PHASES: 2,
-      PHOTOS_PER_PHASE: [4, 4],
-      TOTAL_PHOTOS: 8,
-      photoTitles: [
-        'Foto Plang',
-        'Foto EDC',
-        'Foto SIM Card + SN EDC + SAM Card',
-        'Foto Roll Sales Draft',
-        'Foto Sales Draft',
-        'Foto BAST',
-        'Foto Surat Pernyataan Training',
-        'Foto PIC Merchant',
-      ]
-    },
-    default: {
-      TOTAL_PHASES: 2,
-      PHOTOS_PER_PHASE: [4, 4],
-      TOTAL_PHOTOS: 8,
-      photoTitles: [
-        'Foto Plang',
-        'Foto EDC',
-        'Foto SIM Card + SN EDC + SAM Card',
-        'Foto Roll Sales Draft',
-        'Foto Sales Draft',
-        'Foto BAST',
-        'Foto Surat Pernyataan Training',
-        'Foto PIC Merchant',
-      ]
-    },
-    sharing: {
-      TOTAL_PHASES: 4,
-      PHOTOS_PER_PHASE: [5, 5, 5, 4],
-      TOTAL_PHOTOS: 19,
-      photoTitles: [
-        // Phase 1 (1-5)
-        'Foto Plang',
-        'Foto EDC',
-        'Foto Stiker EDC',
-        'Foto Screen Gard',
-        'Foto SIM Card + SN EDC + SAM Card',
-        // Phase 2 (6-10)
-        'Foto Sales Draft',
-        'Foto PIC Merchant',
-        'Foto Roll Sales Draft',
-        'Foto Surat Pernyataan Training',
-        'Foto Aplikasi EDC',
-        // Phase 3 (11-15)
-        'Foto Sales Draft Patch L (EDC Konven)',
-        'Foto Screen P2G (EDC Android)',
-        'Foto BAST',
-        'Foto Sales Draft All Member Bank (tampak logo bank)',
-        'Foto Sales Draft BMRI',
-        // Phase 4 (16-19)
-        'Foto Sales Draft BNI',
-        'Foto Sales Draft BRI',
-        'Foto Sales Draft BTN',
-        'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
-      ]
-    }
-  };
+  // const [accordionOpen, setAccordionOpen] = useState<string | null>(null);
+  // const [syncProgress, setSyncProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   // Fungsi untuk memilih dan membatalkan pilihan tiket
   const selectTicket = async (ticket: Ticket) => {
@@ -216,13 +126,11 @@ const TicketsScreen = () => {
         handleError("User data is missing");
         return;
       }
-
       setIsRefreshing(true);
 
       // Fetch all ticket statuses at once to avoid multiple API calls, but with a short delay between them
       // to prevent overwhelming the device
       const assignedData = await getTicketsWithGeofences(userData.user_id, 'assigned');
-
       // Process assigned tickets first for better perceived performance (active tab is shown first)
       const processedTickets: Ticket[] = [];
       const geofences: Geofence[] = [];
@@ -265,7 +173,6 @@ const TicketsScreen = () => {
         setGeofence([...geofences]);
         setGeofenceLookup({ ...geofenceLookupMap });
       }
-
       handleLog(`✅ Optimized fetch: ${processedTickets.length} tickets with ${geofences.length} unique geofences`);
       setIsRefreshing(false);
     } catch (error: any) {
@@ -275,7 +182,6 @@ const TicketsScreen = () => {
   }, [userData]);
 
   useEffect(() => {
-    // Inisialisasi tabel audit log dan ticket photo
     initTicketPhotoTable();
     initUploadAuditLogTable();
     fetchTicketsWithGeofences();
@@ -719,7 +625,7 @@ const TicketsScreen = () => {
         while (retry < 3 && !uploaded) {
           try {
             // Validasi file
-            const fileInfo = await FileSystem.getInfoAsync(photo.local_uri);
+            const fileInfo = await getInfoAsync(photo.local_uri);
             if (!fileInfo.exists) {
               handleLog(`[SYNC] File tidak ditemukan: ${photo.local_uri}`);
               await updatePhotoStatus(photo.id, 'failed');
@@ -768,7 +674,7 @@ const TicketsScreen = () => {
             }
             // Sukses: update status dan hapus file lokal
             await updatePhotoStatus(photo.id, 'success');
-            await FileSystem.deleteAsync(photo.local_uri, { idempotent: true });
+            await deleteAsync(photo.local_uri, { idempotent: true });
             await deletePhoto(photo.id);
             insertUploadAuditLog({ ticket_id: photo.ticket_id, photo_id: photo.id, queue_order: photo.queue_order, status: 'success' });
             handleLog(`[SYNC] Foto ${photo.id} (order ${photo.queue_order}) berhasil diupload & dihapus lokal`);
@@ -786,7 +692,7 @@ const TicketsScreen = () => {
             }
           } finally {
             if (compressedUri && compressedUri !== photo.local_uri) {
-              try { await FileSystem.deleteAsync(compressedUri, { idempotent: true }); } catch { }
+              try { await deleteAsync(compressedUri, { idempotent: true }); } catch { }
             }
           }
         }

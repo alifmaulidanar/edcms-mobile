@@ -1,8 +1,8 @@
 import supabase from '../utils/supabase';
-import * as FileSystem from 'expo-file-system';
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { deleteAsync, documentDirectory, EncodingType, getInfoAsync, readAsStringAsync, writeAsStringAsync } from 'expo-file-system';
 
-const logFilePath = FileSystem.documentDirectory + `${process.env.EXPO_PUBLIC_LINKING_URI}_logs.txt`;
+const logFilePath = documentDirectory + `${process.env.EXPO_PUBLIC_LINKING_URI}_logs.txt`;
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB in bytes
 const MAX_LOG_AGE = 3 * 30 * 24 * 60 * 60 * 1000; // 3 months in milliseconds
 
@@ -18,7 +18,7 @@ export const sendLogToBackend = async () => {
       .catch((err: any) => error(`Error saat mengambil data pengguna: ${err}`));
 
     const fileUri = logFilePath;
-    const fileContent = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
+    const fileContent = await readAsStringAsync(fileUri, { encoding: EncodingType.UTF8 });
     const datetime = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }).replace(/[:/]/g, '-').replace(/\s/g, '_');
     const fileName = `${user_id}/${user_id}@${datetime}.txt`;
 
@@ -41,9 +41,9 @@ export const sendLogToBackend = async () => {
 };
 
 // Check log file size and age
-export const checkLogSizeAndAge = async () => {
+const checkLogSizeAndAge = async () => {
   try {
-    const logFileInfo = await FileSystem.getInfoAsync(logFilePath);
+    const logFileInfo = await getInfoAsync(logFilePath);
     if (!logFileInfo.exists) return;
     const currentTime = new Date(new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }));
     const fileSize = logFileInfo.size;
@@ -51,7 +51,7 @@ export const checkLogSizeAndAge = async () => {
     if (fileSize >= MAX_LOG_SIZE || (currentTime.getTime() - lastModifiedTime.getTime()) >= MAX_LOG_AGE) {
       log('Log perlu diputar, mengirimkan ke backend dan menghapus log...');
       await sendLogToBackend();
-      await FileSystem.deleteAsync(logFilePath);
+      await deleteAsync(logFilePath);
       log('Log lama telah dihapus, mulai log baru.');
     }
   } catch (err: any) {
@@ -65,20 +65,20 @@ const writeLog = async (message: any) => {
   const logMessage = `${date} - ${message}\n`;
   try {
     await checkLogSizeAndAge();
-    const existingLogs = await FileSystem.readAsStringAsync(logFilePath, { encoding: FileSystem.EncodingType.UTF8 }).catch(() => '');
+    const existingLogs = await readAsStringAsync(logFilePath, { encoding: EncodingType.UTF8 }).catch(() => '');
     const updatedLogs = existingLogs + logMessage;
-    await FileSystem.writeAsStringAsync(logFilePath, updatedLogs, { encoding: FileSystem.EncodingType.UTF8 });
+    await writeAsStringAsync(logFilePath, updatedLogs, { encoding: EncodingType.UTF8 });
   } catch (err: any) {
     error(`Failed to write log: ${err}`);
   }
 };
 
 // Delete log file
-export const deleteLog = async () => {
+const deleteLog = async () => {
   try {
-    const logFileInfo = await FileSystem.getInfoAsync(logFilePath);
+    const logFileInfo = await getInfoAsync(logFilePath);
     if (logFileInfo.exists) {
-      await FileSystem.deleteAsync(logFilePath);
+      await deleteAsync(logFilePath);
       log('File log berhasil dihapus.');
     } else {
       log('Tidak ada file log yang ditemukan untuk dihapus.');

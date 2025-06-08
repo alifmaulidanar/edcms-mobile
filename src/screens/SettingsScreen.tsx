@@ -1,13 +1,12 @@
-import { Alert, Modal } from "react-native";
 import { logout } from "../api/auth";
 import Constants from "expo-constants";
 import React, { useState } from "react";
+import { Alert, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { View, Text, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { log as handleLog, error as handleError, sendLogToBackend } from "../utils/logHandler";
-
+import { log as handleLog, sendLogToBackend } from "../utils/logHandler";
 
 type RootStackParamList = {
   Login: undefined;

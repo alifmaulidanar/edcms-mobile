@@ -41,7 +41,7 @@ const loadImageAsBase64 = async (uri: string) => {
 };
 
 // Cache management functions
-export const getLocationCache = () => {
+const getLocationCache = () => {
   if (!locationCache) return null;
   const now = Date.now();
   if (now - locationCache.timestamp > CACHE_EXPIRATION) {
@@ -52,7 +52,7 @@ export const getLocationCache = () => {
   return locationCache.data;
 };
 
-export const setLocationCache = (locationData: any) => {
+const setLocationCache = (locationData: any) => {
   if (!locationData) return;
   locationCache = {
     timestamp: Date.now(),
@@ -66,7 +66,7 @@ export const clearLocationCache = () => {
   handleLog('Cache lokasi telah dihapus');
 };
 
-export const getUserLocationInfo = async (location: any, forceRefresh: boolean = false) => {
+const getUserLocationInfo = async (location: any, forceRefresh: boolean = false) => {
   try {
     if (!forceRefresh) {
       const cachedLocation = getLocationCache();

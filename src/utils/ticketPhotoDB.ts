@@ -1,30 +1,7 @@
-import * as SQLite from 'expo-sqlite';
 import { v4 as uuidv4 } from 'uuid';
+import * as SQLite from 'expo-sqlite';
 import { log as handleLog, error as handleError } from './logHandler';
-
-export type TicketPhotoStatus = 'pending' | 'uploading' | 'success' | 'failed';
-
-export interface TicketPhoto {
-  id: string; // uuid v4
-  ticket_id: string;
-  user_id?: string;
-  queue_order: number;
-  local_uri: string;
-  status: TicketPhotoStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-// ===================== AUDIT LOG UPLOAD =====================
-export interface UploadAuditLog {
-  id: string; // uuid v4
-  ticket_id: string;
-  photo_id: string;
-  queue_order: number;
-  status: 'success' | 'failed';
-  error_message?: string;
-  timestamp: string;
-}
+import { TicketPhoto, TicketPhotoStatus, UploadAuditLog } from '../types';
 
 const DB_NAME = 'ticket_photos.db';
 const db = SQLite.openDatabaseSync(DB_NAME);
@@ -155,7 +132,7 @@ export function deletePhoto(id: string): Promise<void> {
 }
 
 // Ambil jumlah foto pending untuk tiket tertentu
-export function countPendingPhotos(ticket_id: string): Promise<number> {
+function countPendingPhotos(ticket_id: string): Promise<number> {
   return new Promise((resolve, reject) => {
     try {
       const row = db.getFirstSync<{ count: number }>(
@@ -171,7 +148,7 @@ export function countPendingPhotos(ticket_id: string): Promise<number> {
 }
 
 // Ambil semua foto (untuk debug/audit)
-export function getAllPhotos(): Promise<TicketPhoto[]> {
+function getAllPhotos(): Promise<TicketPhoto[]> {
   return new Promise((resolve, reject) => {
     try {
       const rows = db.getAllSync<TicketPhoto>(
@@ -186,7 +163,7 @@ export function getAllPhotos(): Promise<TicketPhoto[]> {
 }
 
 // Get audit log by ticket
-export function getAuditLogByTicket(ticket_id: string): UploadAuditLog[] {
+function getAuditLogByTicket(ticket_id: string): UploadAuditLog[] {
   try {
     return db.getAllSync<UploadAuditLog>(
       `SELECT * FROM upload_audit_log WHERE ticket_id = ? ORDER BY timestamp DESC;`,
@@ -199,7 +176,7 @@ export function getAuditLogByTicket(ticket_id: string): UploadAuditLog[] {
 }
 
 // Clean audit log older than X days (default 30)
-export function cleanOldAuditLogs(days: number = 30): void {
+function cleanOldAuditLogs(days: number = 30): void {
   try {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     db.runSync(

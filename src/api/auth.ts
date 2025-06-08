@@ -1,6 +1,6 @@
 import { Profile } from '../types';
-import Radar from 'react-native-radar';
 import supabase from '../utils/supabase';
+// import Radar from 'react-native-radar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 
@@ -26,9 +26,9 @@ export const login = async (email: string, password: string) => {
     handleError('User data not found');
     throw new Error('User data not found');
   }
-  Radar.setUserId(userId);
-  Radar.setMetadata(userData)
-  Radar.setDescription(`${userData.username} - ${userData.email} - ${userData.phone}`);
+  // Radar.setUserId(userId);
+  // Radar.setMetadata(userData)
+  // Radar.setDescription(`${userData.username} - ${userData.email} - ${userData.phone}`);
   return userData;
 };
 
@@ -52,7 +52,7 @@ export const silentRefreshSession = async () => {
   }
 };
 
-export const saveUserCredentials = async (email: string, password: string) => {
+const saveUserCredentials = async (email: string, password: string) => {
   try {
     await AsyncStorage.setItem('userCredentials', JSON.stringify({ email, password }));
   } catch (error) {

@@ -16,9 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to provide better service.",
-        "NSLocationAlwaysUsageDescription": "This app uses your location to provide better service.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to provide better service.",
+        "NSLocationWhenInUseUsageDescription": "Aplikasi ini menggunakan lokasi Anda untuk memberikan layanan yang lebih baik.",
+        "NSLocationAlwaysUsageDescription": "Aplikasi ini menggunakan lokasi Anda untuk memberikan layanan yang lebih baik.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Aplikasi ini menggunakan lokasi Anda untuk memberikan layanan yang lebih baik.",
         "UIBackgroundModes": [
           "location",
           "fetch"
@@ -74,7 +74,7 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "expo-background-fetch",
+      // "expo-background-fetch",
       [
         "expo-notifications",
         {
@@ -88,23 +88,23 @@
       [
         "expo-media-library",
         {
-          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos."
+          "savePhotosPermission": "Izinkan $(PRODUCT_NAME) untuk menyimpan foto."
         }
       ],
-      [
-        "react-native-radar",
-        {
-          "iosFraud": true,
-          "iosNSLocationWhenInUseUsageDescription": "Your foreground location usage description.",
-          "iosNSLocationAlwaysAndWhenInUseUsageDescription": "Your background location usage description.",
-          "iosBackgroundMode": true,
-          "androidFraud": true,
-          "androidBackgroundPermission": true,
-          "androidFineLocationPermission": true,
-          "addRadarSDKMotion": true,
-          "iosNSMotionUsageDescription": "Your motion usage description."
-        }
-      ],
+      // [
+      //   "react-native-radar",
+      //   {
+      //     "iosFraud": true,
+      //     "iosNSLocationWhenInUseUsageDescription": "Aplikasi ini menggunakan lokasi Anda untuk memberikan layanan yang lebih baik.",
+      //     "iosNSLocationAlwaysAndWhenInUseUsageDescription": "Aplikasi ini menggunakan lokasi Anda untuk memberikan layanan yang lebih baik.",
+      //     "iosBackgroundMode": true,
+      //     "androidFraud": true,
+      //     "androidBackgroundPermission": true,
+      //     "androidFineLocationPermission": true,
+      //     "addRadarSDKMotion": true,
+      //     "iosNSMotionUsageDescription": "Aplikasi ini menggunakan gerakan Anda untuk memberikan layanan yang lebih baik."
+      //   }
+      // ],
       "expo-router",
       "expo-sqlite"
     ],

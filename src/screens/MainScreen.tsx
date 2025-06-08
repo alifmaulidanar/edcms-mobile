@@ -1,15 +1,12 @@
 import moment from "moment-timezone";
 import { RootState } from '../store';
 import { useSelector } from 'react-redux';
-import { Geofence, Ticket } from '../types';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import NetInfo from '@react-native-community/netinfo';
 import { getCurrentPositionAsync } from 'expo-location';
 import { RadioButton, Checkbox } from 'react-native-paper';
-import BackgroundJob from 'react-native-background-actions';
-import { startUploadService } from "../utils/backgroundUploader";
 import { startTicketNew, stopTicketNew } from "../utils/noRadar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -17,15 +14,16 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import MultiPhasePhotoCapture from "../components/MultiPhasePhotoCapture";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { clearLocationCache } from "../components/ImageTimestampAndLocation";
+import { Geofence, Ticket, TicketActionQueueItem as TicketActionQueueItemV2 } from '../types';
 import { getTicketsWithGeofences, updateTicketExtras, getUpdatedTicketStatus } from '../api/tickets';
 import { View, Alert, Text, Modal, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from "react-native";
-import { enqueueTicketAction as enqueueTicketActionQueue, hasPendingTicketActions as hasPendingTicketActionsQueue, getQueueContents as getQueueContentsQueue, TicketActionQueueItem as TicketActionQueueItemV2, setupTicketQueueNetInfo, processTicketActionQueue } from '../utils/ticketActionQueue';
+import { enqueueTicketAction as enqueueTicketActionQueue, hasPendingTicketActions as hasPendingTicketActionsQueue, getQueueContents as getQueueContentsQueue, setupTicketQueueNetInfo, processTicketActionQueue } from '../utils/ticketActionQueue';
 
 /**
  * Gets the selected ticket from AsyncStorage
  * Used as the primary source of truth for selectedTicket
  */
-export const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
+const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
   try {
     const storedTicket = await AsyncStorage.getItem("selectedTicket");
     if (storedTicket) {
@@ -44,7 +42,7 @@ export const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => 
  * Saves the selected ticket to AsyncStorage
  * This should be called whenever the selectedTicket changes
  */
-export const setSelectedTicketToStorage = async (ticket: Ticket | null): Promise<void> => {
+const setSelectedTicketToStorage = async (ticket: Ticket | null): Promise<void> => {
   try {
     if (ticket) {
       await AsyncStorage.setItem("selectedTicket", JSON.stringify(ticket));
@@ -89,9 +87,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   const [hasPendingExtras, setHasPendingExtras] = useState(false);
   const [offlineLogModalVisible, setOfflineLogModalVisible] = useState(false);
   const [offlineActionLog, setOfflineActionLog] = useState<TicketActionQueueItemV2[]>([]);
-  const [offlinePhotoLog, setOfflinePhotoLog] = useState([]);
   const [isLoadingOfflineLog, setIsLoadingOfflineLog] = useState(false);
-  const [isLoadingOfflinePhotoLog, setIsLoadingOfflinePhotoLog] = useState(false);
   const [isWorking, setIsWorking] = useState<boolean>(false);
   const [pendingEndLocation, setPendingEndLocation] = useState<[number, number] | null>(null);
   const [pendingEndAt, setPendingEndAt] = useState<string | null>(null);
@@ -124,27 +120,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   }, [tracking, selectedTicket]);
 
   useEffect(() => {
-    // AsyncStorage.removeItem("uploadQueue");
-    // setIsPhotoProcessed(false);
     const init = async () => {
-      // if (BackgroundJob.isRunning()) {
-      //   await stopUploadService();
-      // }
-      // if (!BackgroundJob.isRunning()) {
-      //   await startUploadService();
-      // }
       try {
-        const queue = await AsyncStorage.getItem('uploadQueue');
-        const isRunning = BackgroundJob.isRunning();
-        handleLog(`Background service status: ${isRunning}`);
-        if (!isRunning && queue && JSON.parse(queue).length > 0) {
-          try {
-            await startUploadService();
-            handleLog('Starting background service...');
-          } catch (error) {
-            handleError(`Gagal memulai BackgroundJob: ${error}`);
-          }
-        }
         // Check pending queue items for UI indicators
         setHasPendingActions(await hasPendingTicketActionsQueue());
         setHasPendingExtras(await hasPendingTicketActionsQueue());
@@ -1033,19 +1010,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
   const loadOfflineLog = async () => {
     setIsLoadingOfflineLog(true);
-    setIsLoadingOfflinePhotoLog(true);
     try {
       const actions = await getQueueContentsQueue();
       setOfflineActionLog(actions);
-      // Load photo upload queue
-      const rawPhotoQueue = await AsyncStorage.getItem('uploadQueue');
-      setOfflinePhotoLog(rawPhotoQueue ? JSON.parse(rawPhotoQueue) : []);
     } catch (e) {
       setOfflineActionLog([]);
-      setOfflinePhotoLog([]);
     }
     setIsLoadingOfflineLog(false);
-    setIsLoadingOfflinePhotoLog(false);
   };
 
   const handleOpenOfflineLog = async () => {
@@ -1053,16 +1024,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     setOfflineLogModalVisible(true);
   };
 
-  // const handleClearOfflineLog = async () => {
-  //   await clearTicketQueue();
-  //   await clearTicketExtrasQueue();
-  //   await AsyncStorage.removeItem('uploadQueue');
-  //   await loadOfflineLog();
-  // };
-
-  // Tambahkan useEffect untuk trigger pemrosesan queue async storage
+  // Queue async storage trigger
   useEffect(() => {
-    // Handler untuk setiap item queue
     const handler = async (item: TicketActionQueueItemV2) => {
       switch (item.type) {
         case 'start':
@@ -1080,8 +1043,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         case 'stop':
           await stopTicketNew(item.ticketId, item.data.ended_location, item.data.ended_at);
           break;
-        // case 'cancel':
-        // break;
         case 'extras':
           await updateTicketExtras(item.ticketId, item.data);
           break;
@@ -1089,9 +1050,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           throw new Error('Unknown action type');
       }
     };
-    // Proses queue saat mount
     processTicketActionQueue(handler);
-    // Listen NetInfo
     const unsubscribe = setupTicketQueueNetInfo(handler, async (processed) => {
       if (processed) {
         setHasPendingActions(await hasPendingTicketActionsQueue());
@@ -1102,7 +1061,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  // useEffect untuk load isWorking dari AsyncStorage saat mount
   useEffect(() => {
     const loadIsWorking = async () => {
       const val = await AsyncStorage.getItem("isWorking");
@@ -1111,7 +1069,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     loadIsWorking();
   }, []);
 
-  // useEffect untuk simpan isWorking ke AsyncStorage setiap kali berubah
   useEffect(() => {
     AsyncStorage.setItem("isWorking", isWorking ? "true" : "false");
   }, [isWorking]);
@@ -1197,21 +1154,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   </View>
                 ))
               )}
-              <Text className="mt-4 mb-2 font-bold text-gray-700">Upload Foto (Background):</Text>
-              {isLoadingOfflinePhotoLog ? (
-                <ActivityIndicator color="#059669" />
-              ) : offlinePhotoLog.length === 0 ? (
-                <Text className="mb-2 text-gray-500">Tidak ada upload foto offline.</Text>
-              ) : (
-                (offlinePhotoLog as any[]).map((item, idx) => (
-                  <View key={idx} className="p-2 mb-2 bg-gray-100 rounded">
-                    <Text className="text-xs text-gray-700">[UPLOAD] Ticket ID: {item.ticket_id}</Text>
-                    <Text className="text-xs text-gray-500">User: {item.user_id}</Text>
-                    <Text className="text-xs text-gray-500">Jumlah Foto: {item.photos?.length || 0}</Text>
-                    <Text className="text-xs text-gray-500">Percobaan: {item.attempts || 0}</Text>
-                  </View>
-                ))
-              )}
             </ScrollView>
             <View className="flex-row justify-between mt-6">
               <TouchableOpacity
@@ -1220,12 +1162,6 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               >
                 <Text className="text-sm font-semibold text-gray-700">Tutup</Text>
               </TouchableOpacity>
-              {/* <TouchableOpacity
-                onPress={handleClearOfflineLog}
-                className="px-6 py-3 bg-red-500 rounded-lg"
-              >
-                <Text className="text-sm font-semibold text-white">Bersihkan Log</Text>
-              </TouchableOpacity> */}
             </View>
           </View>
         </View>

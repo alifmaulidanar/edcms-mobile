@@ -4,7 +4,7 @@ import supabase from "../utils/supabase";
 import { error as handleError, log as handleLog } from '../utils/logHandler';
 
 // Get tickets by user ID from backend API
-export const getTickets = async (user_id: string): Promise<Ticket[]> => {
+const getTickets = async (user_id: string): Promise<Ticket[]> => {
   try {
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL as string}/ticket/user/${user_id}`, {
       method: "GET",

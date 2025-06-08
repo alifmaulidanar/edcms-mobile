@@ -1,18 +1,7 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, Image, ScrollView as RNScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Geofence } from '../types';
-
-interface SyncPreviewModalProps {
-  visible: boolean;
-  onClose: () => void;
-  syncableTickets: any[];
-  selectedTickets: string[];
-  onSelectTicket: (ticketId: string) => void;
-  onSelectAll: () => void;
-  onSync: () => void;
-  geofenceLookup: Record<string, Geofence>;
-}
+import { SyncPreviewModalProps } from '../types';
+import { Modal, View, Text, TouchableOpacity, Image, ScrollView } from 'react-native';
 
 const SyncPreviewModal: React.FC<SyncPreviewModalProps> = ({
   visible,
@@ -53,7 +42,7 @@ const SyncPreviewModal: React.FC<SyncPreviewModalProps> = ({
             <Text className="text-gray-500">Total Tiket: {syncableTickets.length}</Text>
             <Text className="text-gray-500">Total Foto: {syncableTickets.reduce((acc, row) => acc + row.photos.length, 0)}</Text>
           </View>
-          <RNScrollView style={{ maxHeight: 400, paddingHorizontal: 16 }}>
+          <ScrollView style={{ maxHeight: 400, paddingHorizontal: 16 }}>
             <TouchableOpacity
               onPress={onSelectAll}
               style={{ marginBottom: 12, alignSelf: 'flex-end' }}
@@ -136,7 +125,7 @@ const SyncPreviewModal: React.FC<SyncPreviewModalProps> = ({
                 </View>
               ))
             )}
-          </RNScrollView>
+          </ScrollView>
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 16, borderTopWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#fff', borderBottomLeftRadius: 16, borderBottomRightRadius: 16 }}>
             <TouchableOpacity
               onPress={onSync}

@@ -1,14 +1,14 @@
 import { setUser } from "../store";
-import { login, silentRefreshSession } from "../api/auth";
 import Constants from "expo-constants";
 import { useDispatch } from "react-redux";
 import React, { useState, useEffect } from "react";
+import { login, silentRefreshSession } from "../api/auth";
 import ForgotPasswordModal from "../components/ForgotPassword";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import LocationPermissionModal from "../components/LocationPermission";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { getBackgroundPermissionsAsync, getForegroundPermissionsAsync } from 'expo-location';
-import { View, Text, TextInput, Button, Alert, Platform, Linking, Image, TouchableOpacity, Modal } from "react-native";
+import { View, Text, TextInput, Button, Alert, Platform, Linking, Image, TouchableOpacity } from "react-native";
 
 type RootStackParamList = {
   Login: undefined;

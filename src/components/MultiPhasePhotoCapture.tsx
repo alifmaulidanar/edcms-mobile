@@ -1,14 +1,14 @@
+import { v4 as uuidv4 } from 'uuid';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from "react";
-import { addTimestampToPhoto } from "./ImageTimestampAndLocation";
 import { launchCameraAsync } from "expo-image-picker";
 import { getCurrentPositionAsync } from 'expo-location';
+import { addTimestampToPhoto } from "./ImageTimestampAndLocation";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { saveToLibraryAsync, requestPermissionsAsync } from 'expo-media-library';
-import { View, Text, Modal, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from "react-native";
 import { insertTicketPhoto, initTicketPhotoTable } from '../utils/ticketPhotoDB';
-import * as FileSystem from 'expo-file-system';
-import { v4 as uuidv4 } from 'uuid';
+import { copyAsync, documentDirectory, getFreeDiskStorageAsync, makeDirectoryAsync } from 'expo-file-system';
+import { View, Text, Modal, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from "react-native";
 
 // Photo configuration based on ticket type
 const TICKET_CONFIG = {
@@ -156,7 +156,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
   // Helper: Cek storage device sebelum simpan foto
   const checkStorageBeforeSave = async (minFreeMB: number = 100): Promise<boolean> => {
     try {
-      const freeBytes = await FileSystem.getFreeDiskStorageAsync();
+      const freeBytes = await getFreeDiskStorageAsync();
       const freeMB = freeBytes / (1024 * 1024);
       if (freeMB < minFreeMB) {
         handleError(`[Storage] Sisa storage device sangat rendah: ${freeMB.toFixed(2)} MB`);
@@ -206,13 +206,13 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
     if (!enoughStorage) return null;
     try {
       // Buat folder khusus per tiket
-      const folderUri = `${FileSystem.documentDirectory}photos/${ticketId}/`;
-      await FileSystem.makeDirectoryAsync(folderUri, { intermediates: true }).catch(() => { });
+      const folderUri = `${documentDirectory}photos/${ticketId}/`;
+      await makeDirectoryAsync(folderUri, { intermediates: true }).catch(() => { });
       // Nama file: uuid v4
       const uuid = uuidv4();
       const fileName = `${queueOrder.toString().padStart(2, '0')}_${uuid}.jpg`;
       const destUri = folderUri + fileName;
-      await FileSystem.copyAsync({ from: photoUri, to: destUri });
+      await copyAsync({ from: photoUri, to: destUri });
       // Insert ke SQLite
       await insertTicketPhoto(ticketId, queueOrder, destUri);
       handleLog(`[Photo] Foto disimpan ke file-system & SQLite: ${destUri}`);

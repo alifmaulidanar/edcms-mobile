@@ -5,11 +5,10 @@ import supabase from "./src/utils/supabase";
 import { Session } from "@supabase/supabase-js";
 import React, { useEffect, useState } from "react";
 import store, { setUser } from "./src/store/index";
-import { initializeRadar } from "./src/utils/radar";
 import LoginScreen from "./src/screens/LoginScreen";
+// import { initializeRadar } from "./src/utils/radar";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import TabsNavigator from "./src/navigation/TabsNavigator";
-import BackgroundJob from 'react-native-background-actions';
 import { createStackNavigator } from "@react-navigation/stack";
 import { NavigationContainer } from "@react-navigation/native";
 import ForgotPasswordModal from "./src/components/ForgotPassword";
@@ -18,7 +17,6 @@ import PrivacyPolicyScreen from "./src/screens/PrivacyPolicyScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View, Text, StatusBar, Linking, AppState } from "react-native";
 import { error as handleError, log as handleLog } from "./src/utils/logHandler";
-import { isUploadInProgress, startUploadService } from "./src/utils/backgroundUploader";
 
 // Constants for route names
 const Routes = {
@@ -84,8 +82,8 @@ export default function App() {
 
   useEffect(() => {
     // Initialize Radar SDK
-    const publishableKey = process.env.EXPO_PUBLIC_RADAR_PUBLISHABLE_KEY as string;
-    initializeRadar(publishableKey);
+    // const publishableKey = process.env.EXPO_PUBLIC_RADAR_PUBLISHABLE_KEY as string;
+    // initializeRadar(publishableKey);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -114,42 +112,6 @@ export default function App() {
     };
     loadUserData();
   }, []);
-
-  // Monitor app state changes to ensure background jobs continue
-  useEffect(() => {
-    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
-      handleLog(`App state changed: ${appState} -> ${nextAppState}`);
-      // App coming back to foreground
-      if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        try {
-          const uploadActive = await isUploadInProgress();
-          const serviceRunning = BackgroundJob.isRunning();
-          handleLog(`App returned to foreground. Upload status: ${uploadActive ? 'Active' : 'Inactive'}, Service running: ${serviceRunning ? 'Yes' : 'No'}`);
-          if (uploadActive && !serviceRunning) {
-            handleLog('Restarting background upload service...');
-            await startUploadService();
-          }
-          // Refresh any necessary data
-          await AsyncStorage.setItem('lastForegroundTime', Date.now().toString());
-        } catch (error) {
-          handleError(`Error handling app state change to active: ${error}`);
-        }
-      }
-      // App going to background
-      else if (nextAppState.match(/inactive|background/) && appState === 'active') {
-        try {
-          handleLog('App going to background');
-          await AsyncStorage.setItem('lastBackgroundTime', Date.now().toString());
-        } catch (error) {
-          handleError(`Error handling app state change to background: ${error}`);
-        }
-      }
-      setAppState(nextAppState);
-    });
-    return () => {
-      appStateSubscription.remove();
-    };
-  }, [appState]);
 
   if (isLoading) {
     return (

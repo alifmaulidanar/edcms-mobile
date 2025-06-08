@@ -1,20 +1,10 @@
+import { TicketActionQueueItem } from '../types';
+import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { log as handleLog, error as handleError } from './logHandler';
-import NetInfo from '@react-native-community/netinfo';
 
 const QUEUE_KEY = 'ticketActionQueueV2';
 const MAX_RETRY = 5;
-
-export type TicketActionType = 'start' | 'stop' | 'cancel' | 'extras';
-
-export interface TicketActionQueueItem {
-  type: TicketActionType;
-  ticketId: string;
-  data?: any;
-  attempts?: number;
-  createdAt: number;
-  lastAttemptedAt?: number;
-}
 
 // Guard: reject if payload contains photo/file
 function containsPhotoData(data: any): boolean {
