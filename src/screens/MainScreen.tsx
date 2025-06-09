@@ -1209,7 +1209,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     onRefresh();
                   }
                 }}
-                style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                style={{ height: 50, backgroundColor: 'white' }}
                 enabled={!(tracking || isSubmittingTicketExtras || multiPhasePhotoModalVisible)} // Disable picker if tracking or in critical state
               >
                 <Picker.Item label="Pilih tiket..." value={null} />
@@ -1584,7 +1584,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     <Picker
                       selectedValue={formData.signal_bar || selectedTicket?.additional_info?.signal_bar}
                       onValueChange={(value) => handleInputChangeTicketExtras("signal_bar", value)}
-                      style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                      style={{ height: 50, backgroundColor: 'white' }}
                     >
                       <Picker.Item label="Signal Bar..." value="" />
                       <Picker.Item label="1" value="1" />
@@ -1598,7 +1598,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     <Picker
                       selectedValue={formData.signal_type || selectedTicket?.additional_info?.signal_type}
                       onValueChange={(value) => handleInputChangeTicketExtras("signal_type", value)}
-                      style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                      style={{ height: 50, backgroundColor: 'white' }}
                     >
                       <Picker.Item label="Signal Type..." value="" />
                       <Picker.Item label="3G" value="3G" />
@@ -1607,13 +1607,12 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     </Picker>
                   </View>
                 </View>
-
                 <View className="flex-1 mb-4">
                   <Text className="text-sm text-gray-600">Kondisi EDC</Text>
                   <Picker
                     selectedValue={formData.edc_condition || selectedTicket?.additional_info?.edc_condition}
                     onValueChange={(value) => handleInputChangeTicketExtras("edc_condition", value)}
-                    style={{ height: 50, backgroundColor: 'white', borderRadius: 8 }}
+                    style={{ height: 50, backgroundColor: 'white' }}
                   >
                     <Picker.Item style={{ fontSize: 12 }} label="Pilih kondisi EDC..." value="" />
                     <Picker.Item style={{ fontSize: 12 }} label="Kondisi EDC Baik" value="Kondisi EDC Baik" />

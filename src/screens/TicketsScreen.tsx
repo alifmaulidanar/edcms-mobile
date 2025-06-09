@@ -1364,7 +1364,7 @@ const TicketItem = React.memo(({
           </View>
         )}
         <View style={{ marginTop: 10 }}>
-          <Text style={{ fontWeight: "medium", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
+          <Text style={{ fontWeight: "bold", color: "#3B82F6" }}>{ticket.ticket_id}</Text>
           <Text style={{ fontWeight: "bold" }}>{ticket.description}</Text>
           <Text style={{ fontWeight: "500", color: "#4B5563" }}>
             {geofenceDescription}
