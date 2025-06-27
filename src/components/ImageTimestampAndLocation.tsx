@@ -188,7 +188,7 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
       `${userInfo.kode_pos}`,
       `${userInfo.provinsi}`,
       `${userInfo.negara}`,
-      `${'formattedAddress' in userInfo ? userInfo.formattedAddress : '-'}`
+      // `${'formattedAddress' in userInfo ? userInfo.formattedAddress : '-'}`
     ];
     handleLog(`Menambahkan timestamp ke foto`);
 
@@ -230,6 +230,20 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
       // 6. Text Position
       let yPos = imgHeight - margin;
       const textX = imgWidth - margin;
+      const numLines = timestampText.length;
+      const totalTextHeight = numLines * lineHeight;
+      const rectTop = yPos - totalTextHeight + lineHeight * 0.2;
+      const rectBottom = yPos + fontSize * 0.2;
+      const rectLeft = 0; // full width
+      const rectRight = imgWidth; // full width
+
+      // Draw darker semi-transparent black rectangle as backdrop (0.6 opacity)
+      const rectPaint = Skia.Paint();
+      rectPaint.setColor(Skia.Color('rgba(0,0,0,0.6)'));
+      rectPaint.setStyle(PaintStyle.Fill);
+      const rect = { x: rectLeft, y: rectTop, width: rectRight - rectLeft, height: rectBottom - rectTop };
+      canvas.drawRect(rect, rectPaint);
+      rectPaint.dispose();
 
       // 7. Draw Text
       timestampText.reverse().forEach(line => {

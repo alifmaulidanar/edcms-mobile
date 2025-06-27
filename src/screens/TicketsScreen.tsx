@@ -173,7 +173,7 @@ const TicketsScreen = () => {
         setGeofence([...geofences]);
         setGeofenceLookup({ ...geofenceLookupMap });
       }
-      handleLog(`✅ Optimized fetch: ${processedTickets.length} tickets with ${geofences.length} unique geofences`);
+      // handleLog(`✅ Optimized fetch: ${processedTickets.length} tickets with ${geofences.length} unique geofences`);
       setIsRefreshing(false);
     } catch (error: any) {
       handleLog(`Error in optimized fetch: ${error.message}`);

@@ -10,19 +10,92 @@ export const TICKET_CONFIG = {
       'Foto Struk #1',
     ]
   },
+  // single: {
+  //   TOTAL_PHASES: 2,
+  //   PHOTOS_PER_PHASE: [4, 4],
+  //   TOTAL_PHOTOS: 8,
+  //   photoTitles: [
+  //     'Foto Plang',
+  //     'Foto EDC',
+  //     'Foto SIM Card + SN EDC + SAM Card',
+  //     'Foto Roll Sales Draft',
+  //     'Foto Sales Draft',
+  //     'Foto BAST',
+  //     'Foto Surat Pernyataan Training',
+  //     'Foto PIC Merchant',
+  //   ]
+  // },
+  // default: {
+  //   TOTAL_PHASES: 2,
+  //   PHOTOS_PER_PHASE: [4, 4],
+  //   TOTAL_PHOTOS: 8,
+  //   photoTitles: [
+  //     'Foto Plang',
+  //     'Foto EDC',
+  //     'Foto SIM Card + SN EDC + SAM Card',
+  //     'Foto Roll Sales Draft',
+  //     'Foto Sales Draft',
+  //     'Foto BAST',
+  //     'Foto Surat Pernyataan Training',
+  //     'Foto PIC Merchant',
+  //   ]
+  // },
+  // sharing: {
+  //   TOTAL_PHASES: 4,
+  //   PHOTOS_PER_PHASE: [5, 5, 5, 4],
+  //   TOTAL_PHOTOS: 19,
+  //   photoTitles: [
+  //     // Phase 1 (1-5)
+  //     'Foto Plang',
+  //     'Foto EDC',
+  //     'Foto Stiker EDC',
+  //     'Foto Screen Gard',
+  //     'Foto SIM Card + SN EDC + SAM Card',
+  //     // Phase 2 (6-10)
+  //     'Foto Sales Draft',
+  //     'Foto PIC Merchant',
+  //     'Foto Roll Sales Draft',
+  //     'Foto Surat Pernyataan Training',
+  //     'Foto Aplikasi EDC',
+  //     // Phase 3 (11-15)
+  //     'Foto Sales Draft Patch L (EDC Konven)',
+  //     'Foto Screen P2G (EDC Android)',
+  //     'Foto BAST',
+  //     'Foto Sales Draft All Member Bank (tampak logo bank)',
+  //     'Foto Sales Draft BMRI',
+  //     // Phase 4 (16-19)
+  //     'Foto Sales Draft BNI',
+  //     'Foto Sales Draft BRI',
+  //     'Foto Sales Draft BTN',
+  //     'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
+  //   ]
+  // },
   single: {
-    TOTAL_PHASES: 2,
-    PHOTOS_PER_PHASE: [4, 4],
-    TOTAL_PHOTOS: 8,
+    TOTAL_PHASES: 4,
+    PHOTOS_PER_PHASE: [5, 5, 5, 6],
+    TOTAL_PHOTOS: 21,
     photoTitles: [
       'Foto Plang',
       'Foto EDC',
+      'Foto Stiker EDC',
+      'Foto Screen Gard',
       'Foto SIM Card + SN EDC + SAM Card',
-      'Foto Roll Sales Draft',
       'Foto Sales Draft',
-      'Foto BAST',
-      'Foto Surat Pernyataan Training',
-      'Foto PIC Merchant',
+      'Foto PIC Merchant dan EDC',
+      'Foto Roll Sales Draft',
+      'Surat Pernyataan Training',
+      'Aplikasi EDC',
+      'Sales Draft Patch L (EDC Konven)',
+      'Screen P2G (EDC Android)',
+      'BAST Pernyataan Training/Tanda Terima Thermal/Pullout',
+      'Foto Sales Draft MTI All Memberbank (Tampak Logo Bank)',
+      'Sales Draft BMRI',
+      'Sales Draft BNI',
+      'Sales Draft BRI',
+      'Sales Draft BTN',
+      'Foto No Telpon TY dan No PIC Kawasan/TL di Bagian Belakang EDC',
+      'Foto Selfie Teknisi di Merchant',
+      'Foto Selfie Video Call dengan Team Monitoring BNI',
     ]
   },
   default: {
@@ -42,32 +115,30 @@ export const TICKET_CONFIG = {
   },
   sharing: {
     TOTAL_PHASES: 4,
-    PHOTOS_PER_PHASE: [5, 5, 5, 4],
-    TOTAL_PHOTOS: 19,
+    PHOTOS_PER_PHASE: [5, 5, 5, 6],
+    TOTAL_PHOTOS: 21,
     photoTitles: [
-      // Phase 1 (1-5)
       'Foto Plang',
       'Foto EDC',
       'Foto Stiker EDC',
       'Foto Screen Gard',
       'Foto SIM Card + SN EDC + SAM Card',
-      // Phase 2 (6-10)
       'Foto Sales Draft',
-      'Foto PIC Merchant',
+      'Foto PIC Merchant dan EDC',
       'Foto Roll Sales Draft',
-      'Foto Surat Pernyataan Training',
-      'Foto Aplikasi EDC',
-      // Phase 3 (11-15)
-      'Foto Sales Draft Patch L (EDC Konven)',
-      'Foto Screen P2G (EDC Android)',
-      'Foto BAST',
-      'Foto Sales Draft All Member Bank (tampak logo bank)',
-      'Foto Sales Draft BMRI',
-      // Phase 4 (16-19)
-      'Foto Sales Draft BNI',
-      'Foto Sales Draft BRI',
-      'Foto Sales Draft BTN',
-      'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
+      'Surat Pernyataan Training',
+      'Aplikasi EDC',
+      'Sales Draft Patch L (EDC Konven)',
+      'Screen P2G (EDC Android)',
+      'BAST Pernyataan Training/Tanda Terima Thermal/Pullout',
+      'Foto Sales Draft MTI All Memberbank (Tampak Logo Bank)',
+      'Sales Draft BMRI',
+      'Sales Draft BNI',
+      'Sales Draft BRI',
+      'Sales Draft BTN',
+      'Foto No Telpon TY dan No PIC Kawasan/TL di Bagian Belakang EDC',
+      'Foto Selfie Teknisi di Merchant',
+      'Foto Selfie Video Call dengan Team Monitoring BNI',
     ]
   }
 };
@@ -79,4 +150,4 @@ export function getPhotoTitles(ticket: any): string[] {
   if (service.includes('sharing')) return TICKET_CONFIG.sharing.photoTitles;
   if (service.includes('single')) return TICKET_CONFIG.single.photoTitles;
   return TICKET_CONFIG.default.photoTitles;
-} 
+}

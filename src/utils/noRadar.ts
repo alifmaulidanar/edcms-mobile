@@ -62,7 +62,7 @@ export const startTicketNew = async (user_id: string, username: string, ticket_i
     );
 
     // Update ticket status to "on_progress" in Supabase
-    await updateTicket(ticket_id, tripExternalId, 'on_progress');
+    await updateTicket(username, ticket_id, tripExternalId, 'on_progress');
     handleLog('Trip started successfully');
   } catch (err) {
     handleError(`Error starting trip: ${err}`);
@@ -72,7 +72,7 @@ export const startTicketNew = async (user_id: string, username: string, ticket_i
 /**
  * Stop ticket and trip without Radar
  */
-export const stopTicketNew = async (ticket_id: string, ended_location?: [number, number], ended_at?: string) => {
+export const stopTicketNew = async (username: string, ticket_id: string, ended_location?: [number, number], ended_at?: string) => {
   try {
     if (!ticket_id) {
       handleError('Invalid ticket ID');
@@ -112,7 +112,7 @@ export const stopTicketNew = async (ticket_id: string, ended_location?: [number,
     await endTripNoRadar(trip_id, 'completed', ended_location, ended_at);
 
     // Update ticket status to "completed" in Supabase
-    await updateTicket(ticket_id, trip_id, 'completed');
+    await updateTicket(username, ticket_id, trip_id, 'completed');
     handleLog('Trip completed successfully');
   } catch (err) {
     handleLog(`Error completing trip: ${err}`);
@@ -122,7 +122,7 @@ export const stopTicketNew = async (ticket_id: string, ended_location?: [number,
 /**
  * Cancel ticket and trip without Radar
  */
-const cancelTripNew = async (ticket_id: string) => {
+const cancelTripNew = async (username: string, ticket_id: string) => {
   try {
     if (!ticket_id) {
       handleError('Invalid ticket ID');
@@ -136,7 +136,7 @@ const cancelTripNew = async (ticket_id: string) => {
     await cancelTripNoRadar(trip_id, 'canceled');
 
     // Update ticket status to "canceled" in Supabase
-    await updateTicket(ticket_id, trip_id, 'canceled');
+    await updateTicket(username, ticket_id, trip_id, 'canceled');
     handleLog('Trip canceled successfully');
     handleLog('Background tracking stopped after trip cancellation.');
   } catch (err) {

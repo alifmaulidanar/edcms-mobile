@@ -3,87 +3,13 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from "react";
 import { launchCameraAsync } from "expo-image-picker";
 import { getCurrentPositionAsync } from 'expo-location';
+import { TICKET_CONFIG } from '../utils/ticketPhotoConfig';
 import { addTimestampToPhoto } from "./ImageTimestampAndLocation";
 import { log as handleLog, error as handleError } from '../utils/logHandler';
 import { saveToLibraryAsync, requestPermissionsAsync } from 'expo-media-library';
 import { insertTicketPhoto, initTicketPhotoTable } from '../utils/ticketPhotoDB';
 import { copyAsync, documentDirectory, getFreeDiskStorageAsync, makeDirectoryAsync } from 'expo-file-system';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from "react-native";
-
-// Photo configuration based on ticket type
-const TICKET_CONFIG = {
-  pullout: {
-    TOTAL_PHASES: 1,
-    PHOTOS_PER_PHASE: [4],
-    TOTAL_PHOTOS: 4,
-    photoTitles: [
-      'Foto EDC',
-      'Foto BAST',
-      'Foto PIC Merchant',
-      'Foto Struk #1',
-    ]
-  },
-  single: {
-    TOTAL_PHASES: 2,
-    PHOTOS_PER_PHASE: [4, 4],
-    TOTAL_PHOTOS: 8,
-    photoTitles: [
-      'Foto Plang',
-      'Foto EDC',
-      'Foto SIM Card + SN EDC + SAM Card',
-      'Foto Roll Sales Draft',
-      'Foto Sales Draft',
-      'Foto BAST',
-      'Foto Surat Pernyataan Training',
-      'Foto PIC Merchant',
-    ]
-  },
-  default: {
-    TOTAL_PHASES: 2,
-    PHOTOS_PER_PHASE: [4, 4],
-    TOTAL_PHOTOS: 8,
-    photoTitles: [
-      'Foto Plang',
-      'Foto EDC',
-      'Foto SIM Card + SN EDC + SAM Card',
-      'Foto Roll Sales Draft',
-      'Foto Sales Draft',
-      'Foto BAST',
-      'Foto Surat Pernyataan Training',
-      'Foto PIC Merchant',
-    ]
-  },
-  sharing: {
-    TOTAL_PHASES: 4,
-    PHOTOS_PER_PHASE: [5, 5, 5, 4],
-    TOTAL_PHOTOS: 19,
-    photoTitles: [
-      // Phase 1 (1-5)
-      'Foto Plang',
-      'Foto EDC',
-      'Foto Stiker EDC',
-      'Foto Screen Gard',
-      'Foto SIM Card + SN EDC + SAM Card',
-      // Phase 2 (6-10)
-      'Foto Sales Draft',
-      'Foto PIC Merchant',
-      'Foto Roll Sales Draft',
-      'Foto Surat Pernyataan Training',
-      'Foto Aplikasi EDC',
-      // Phase 3 (11-15)
-      'Foto Sales Draft Patch L (EDC Konven)',
-      'Foto Screen P2G (EDC Android)',
-      'Foto BAST',
-      'Foto Sales Draft All Member Bank (tampak logo bank)',
-      'Foto Sales Draft BMRI',
-      // Phase 4 (16-19)
-      'Foto Sales Draft BNI',
-      'Foto Sales Draft BRI',
-      'Foto Sales Draft BTN',
-      'Foto No Telepon TY dan No PIC Kawasan/TL di Belakang EDC',
-    ]
-  }
-};
 
 interface MultiPhasePhotoCaptureProps {
   visible: boolean;
@@ -260,6 +186,7 @@ const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({
         mediaTypes: 'images',
         quality: 0.3,
         allowsEditing: false,
+        exif: true,
       });
       if (!result.canceled && result.assets.length > 0) {
         const photoUri = result.assets[0].uri;

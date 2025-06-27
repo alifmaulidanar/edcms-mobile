@@ -72,7 +72,7 @@ export const getUpdatedTicketStatus = async (ticket_id: string) => {
 }
 
 // Update tripID and ticket status in table tickets in Supabase by ticket ID by backend API
-export const updateTicket = async (ticket_id: string, trip_id: string, status: string): Promise<void> => {
+export const updateTicket = async (username: string, ticket_id: string, trip_id: string, status: string): Promise<void> => {
   try {
     const appVersion = Constants.expoConfig?.version || 'default:1.4.4';
     handleLog(`Updating ticket ${ticket_id} with trip ID ${trip_id} and status ${status} using app version ${appVersion}`);
@@ -81,7 +81,7 @@ export const updateTicket = async (ticket_id: string, trip_id: string, status: s
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ticket_id, trip_id, status, appVersion }),
+      body: JSON.stringify({ username, ticket_id, trip_id, status, appVersion }),
     });
 
     if (!response.ok) {

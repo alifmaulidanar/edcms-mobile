@@ -28,7 +28,7 @@ const getSelectedTicketFromStorage = async (): Promise<Ticket | null> => {
     const storedTicket = await AsyncStorage.getItem("selectedTicket");
     if (storedTicket) {
       const ticket = JSON.parse(storedTicket);
-      handleLog("Retrieved selectedTicket from AsyncStorage");
+      // handleLog("Retrieved selectedTicket from AsyncStorage");
       return ticket;
     }
     return null;
@@ -191,7 +191,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
       }
       setTickets(ticketsData);
       setGeofence(geofencesData);
-      handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);
+      // handleLog(`✅ Optimized fetch: ${ticketsData.length} tickets with ${geofencesData.length} geofences`);
 
       // --- Advanced logic for selectedTicket persistence ---
       // if (tracking || multiPhasePhotoModalVisible || ticketExtrasModalVisible) {
@@ -628,7 +628,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         training_trx_credit: prevData.training_trx_credit,
         training_trx_debit: prevData.training_trx_debit,
         usual_edc: selectedTicket?.additional_info?.edc_yang_sering_digunakan || prevData.usual_edc,
-        other_edc: selectedTicket?.additional_info?.edc_bank_lainnya || prevData.other_edc,
+        // other_edc: prevData.other_edc,
         merchant_request: selectedTicket?.additional_info?.merchant_request || prevData.merchant_request,
         promo_material: selectedTicket?.additional_info?.promo_matrial_ || prevData.promo_material,
         case_remaks: selectedTicket?.additional_info?.case_remaks || prevData.case_remaks,
@@ -677,10 +677,10 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     edc_count: 1,
     thermal_stock: 0,
     manual_book: false,
-    merchant_condition: "",
+    merchant_condition: "Baik",
     merchant_comment: "",
-    merchant_eligibility: "",
-    edc_active_trx: false,
+    merchant_eligibility: true,
+    edc_active_trx: true,
     no_tel_ty_pic: false,
 
     // TANDA EDC RUSAK
@@ -693,6 +693,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     masalah_fisik: false,
     masalah_port_charger: false,
     masalah_card_reader: false,
+    edc_rusak: false,
+    edc_ganti: false,
+    edc_kendala_sim_card: false,
+    edc_kendala_sam_card: false,
+    edc_butuh_restart: false,
+    edc_butuh_refresh_jaringan: false,
+    edc_butuh_ubah_gprs: false,
+    edc_butuh_bersihkan_chip: false,
+    edc_butuh_bersihkan_card_reader: false,
+    edc_kendala_aplikasi: false,
+    edc_kendala_lainnya: false,
+    edc_kendala_lainnya_text: "",
 
     // KONDISI MERCHANT 3 BULAN KE DEPAN
     merchant_normal: true,
@@ -717,6 +729,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     redeem_point: false,
     cardver_preauth_offline: false,
     manual_key_in: false,
+    tips_and_adjust: false,
     mini_atm: false,
     fare_nonfare: false,
     dsc_download_bin: false,
@@ -725,7 +738,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
     // OTHER DETAILS
     usual_edc: "",
-    other_edc: "",
+    other_edc: false,
     merchant_request: "",
     promo_material: "",
     case_remaks: "",
@@ -813,7 +826,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
           createdAt: Date.now(),
         });
       } else {
-        await stopTicketNew(selectedTicket?.ticket_id || "", ended_location as [number, number], ended_at);
+        await stopTicketNew(userData?.username || '', selectedTicket?.ticket_id || "", ended_location as [number, number], ended_at);
       }
       handleLog(`Status tiket/trip diupdate ke selesai setelah berita acara untuk ticket: ${selectedTicket?.ticket_id}`);
 
@@ -883,8 +896,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         manual_book: false,
         merchant_condition: "",
         merchant_comment: "",
-        merchant_eligibility: "",
-        edc_active_trx: false,
+        merchant_eligibility: true,
+        edc_active_trx: true,
         no_tel_ty_pic: false,
 
         // TANDA EDC RUSAK
@@ -897,6 +910,18 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         masalah_fisik: false,
         masalah_port_charger: false,
         masalah_card_reader: false,
+        edc_rusak: false,
+        edc_ganti: false,
+        edc_kendala_sim_card: false,
+        edc_kendala_sam_card: false,
+        edc_butuh_restart: false,
+        edc_butuh_refresh_jaringan: false,
+        edc_butuh_ubah_gprs: false,
+        edc_butuh_bersihkan_chip: false,
+        edc_butuh_bersihkan_card_reader: false,
+        edc_kendala_aplikasi: false,
+        edc_kendala_lainnya: false,
+        edc_kendala_lainnya_text: "",
 
         // KONDISI MERCHANT 3 BULAN KE DEPAN
         merchant_normal: true,
@@ -921,6 +946,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         redeem_point: false,
         cardver_preauth_offline: false,
         manual_key_in: false,
+        tips_and_adjust: false,
         mini_atm: false,
         fare_nonfare: false,
         dsc_download_bin: false,
@@ -929,7 +955,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
         // OTHER DETAILS
         usual_edc: "",
-        other_edc: "",
+        other_edc: false,
         merchant_request: "",
         promo_material: "",
         case_remaks: "",
@@ -1443,7 +1469,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     />
                   </View>
                   <View className="flex-1 mb-4">
-                    <Text className="text-sm text-gray-600">Thermal Supply</Text>
+                    <Text className="text-sm text-gray-600">Thermal Supply (roll)</Text>
                     <TextInput
                       value={formData.thermal_supply.toString()}
                       onChangeText={(text) => handleInputChangeTicketExtras("thermal_supply", text)}
@@ -1738,7 +1764,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     />
                   </View>
                   <View className="flex-1 mb-4">
-                    <Text className="text-sm text-gray-600">Thermal Stock</Text>
+                    <Text className="text-sm text-gray-600">Thermal Stock (roll)</Text>
                     <TextInput
                       value={formData.thermal_stock.toLocaleString()}
                       onChangeText={(text) => handleInputChangeTicketExtras("thermal_stock", text)}
@@ -1907,15 +1933,24 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 <View className="flex-row flex-wrap gap-x-4 gap-y-4">
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">EDC Lainnya</Text>
-                    <TextInput
-                      value={formData.other_edc || selectedTicket?.additional_info?.edc_bank_lainnya}
-                      onChangeText={(text) => handleInputChangeTicketExtras("other_edc", text)}
-                      // placeholder="EDC Lainnya"
-                      multiline
-                      numberOfLines={3}
-                      textAlignVertical="top"
-                      className="h-20 p-2 mt-2 border border-gray-300 rounded-md"
-                    />
+                    <View className="flex-row mt-2">
+                      <View className="flex-row items-center mr-4">
+                        <RadioButton
+                          value="true"
+                          status={formData.other_edc === true ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("other_edc", true)}
+                        />
+                        <Text className="text-sm text-gray-600">Ya</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="false"
+                          status={formData.other_edc === false ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("other_edc", false)}
+                        />
+                        <Text className="text-sm text-gray-600">Tidak</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
                 <View className="flex-row flex-wrap gap-x-4 gap-y-4">
@@ -1950,7 +1985,8 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
               {/* 6. Tanda EDC Rusak */}
               <View className="mb-4 mr-4">
-                <Text className="mb-4 font-bold underline">6. Tanda-tanda EDC Rusak</Text>
+                <Text className="mb-4 font-bold underline">6. EDC Baik atau Tidak Baik</Text>
+                <Text className="font-bold">Healthy Check EDC</Text>
                 <View className="flex-row items-center -mb-2">
                   <Checkbox
                     status={formData.kondisi_edc_baik ? 'checked' : 'unchecked'}
@@ -2016,11 +2052,150 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               </View>
 
+              <View className="mt-4">
+                <View className="flex-row flex-wrap gap-x-4 gap-y-4">
+                  <View className="flex-1 mb-4">
+                    <Text className="text-sm text-gray-600">Apakah benar EDC rusak?</Text>
+                    <View className="flex-row my-2 space-x-4">
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="true"
+                          status={formData.edc_rusak ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("edc_rusak", true)}
+                        />
+                        <Text className="text-sm text-gray-600">Ya</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="false"
+                          status={!formData.edc_rusak ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("edc_rusak", false)}
+                        />
+                        <Text className="text-sm text-gray-600">Tidak</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View className="flex-1 mb-4">
+                    <Text className="text-sm text-gray-600">Apakah butuh penggantian EDC?</Text>
+                    <View className="flex-row mt-2 space-x-4">
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="true"
+                          status={formData.edc_ganti ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("edc_ganti", true)}
+                        />
+                        <Text className="text-sm text-gray-600">Ya</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <RadioButton
+                          value="false"
+                          status={!formData.edc_ganti ? "checked" : "unchecked"}
+                          onPress={() => handleInputChangeTicketExtras("edc_ganti", false)}
+                        />
+                        <Text className="text-sm text-gray-600">Tidak</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <View className="mb-4 mr-4">
+                <Text className="font-bold">Kendala (Problem) EDC di Lapangan</Text>
+                <View className="my-2">
+                  <View className="flex-row flex-wrap">
+                    <Text className="text-sm text-gray-600">
+                      Pilih kondisi EDC yang sebenarnya terjadi di lapangan.
+                    </Text>
+                    <Text className="text-sm font-semibold text-orange-600">
+                      Kosongkan jika tidak ada kendala.
+                    </Text>
+                  </View>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_kendala_sim_card ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_kendala_sim_card", !formData.edc_kendala_sim_card)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Kendala SIM Card</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_kendala_sam_card ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_kendala_sam_card", !formData.edc_kendala_sam_card)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Kendala SAM Card</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_butuh_restart ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_butuh_restart", !formData.edc_butuh_restart)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Hanya butuh restart EDC</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_butuh_refresh_jaringan ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_butuh_refresh_jaringan", !formData.edc_butuh_refresh_jaringan)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Hanya butuh refresh jaringan</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_butuh_ubah_gprs ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_butuh_ubah_gprs", !formData.edc_butuh_ubah_gprs)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Hanya butuh merubah setting GPRS (4G Only/AUTO)</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_butuh_bersihkan_chip ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_butuh_bersihkan_chip", !formData.edc_butuh_bersihkan_chip)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Hanya butuh bersihkan chip SIM/SAM Card</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_butuh_bersihkan_card_reader ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_butuh_bersihkan_card_reader", !formData.edc_butuh_bersihkan_card_reader)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Hanya butuh bersihkan slot card reader EDC</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_kendala_aplikasi ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_kendala_aplikasi", !formData.edc_kendala_aplikasi)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Kendala Aplikasi</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
+                    status={formData.edc_kendala_lainnya ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("edc_kendala_lainnya", !formData.edc_kendala_lainnya)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600 text-wrap">Kendala lainnya</Text>
+                </View>
+                <View className="flex-1 mt-2 ml-8">
+                  <TextInput
+                    value={formData.edc_kendala_lainnya_text || ""}
+                    onChangeText={(text) => handleInputChangeTicketExtras("edc_kendala_lainnya_text", text)}
+                    placeholder="Isi jika ada kendala lainnya"
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                    className="h-20 p-2 mt-2 border border-gray-300 rounded-md"
+                  />
+                </View>
+              </View>
+
               {/* 7. Kondisi Merchant 3 bulan ke depan */}
-              <View className="mb-4">
+              <View className="my-4">
                 <Text className="mb-4 font-bold underline">7. Kondisi Merchant 3 bulan ke depan</Text>
                 <View className="mb-4">
-                  <Text className="text-sm text-gray-600">Pilih 1 kondisi merchant</Text>
+                  <View className="flex-row flex-wrap">
+                    <Text className="text-sm text-gray-600">Pilih </Text>
+                    <Text className="text-sm font-semibold text-orange-600">salah satu</Text>
+                    <Text className="text-sm text-gray-600"> kondisi merchant.</Text>
+                  </View>
                   <View className="flex-col mt-2 space-x-4">
                     {/* Merchant Normal */}
                     <View className="flex-row items-center">
@@ -2296,7 +2471,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     status={formData.audit_report ? 'checked' : 'unchecked'}
                     onPress={() => handleInputChangeTicketExtras("audit_report", !formData.audit_report)}
                   />
-                  <Text className="ml-2 text-sm text-gray-600">Audit report</Text>
+                  <Text className="ml-2 text-sm text-gray-600">Audit report/Summary report</Text>
                 </View>
                 <View className="flex-row items-center -mb-2">
                   <Checkbox
@@ -2328,6 +2503,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
                 <View className="flex-row items-center -mb-2">
                   <Checkbox
+                    status={formData.tips_and_adjust ? 'checked' : 'unchecked'}
+                    onPress={() => handleInputChangeTicketExtras("tips_and_adjust", !formData.tips_and_adjust)}
+                  />
+                  <Text className="ml-2 text-sm text-gray-600">Tips and adjust</Text>
+                </View>
+                <View className="flex-row items-center -mb-2">
+                  <Checkbox
                     status={formData.mini_atm ? 'checked' : 'unchecked'}
                     onPress={() => handleInputChangeTicketExtras("mini_atm", !formData.mini_atm)}
                   />
@@ -2345,7 +2527,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                     status={formData.dsc_download_bin ? 'checked' : 'unchecked'}
                     onPress={() => handleInputChangeTicketExtras("dsc_download_bin", !formData.dsc_download_bin)}
                   />
-                  <Text className="ml-2 text-sm text-gray-600">DSC/download BIN</Text>
+                  <Text className="ml-2 text-sm text-gray-600">DCC/download BIN</Text>
                 </View>
                 <View className="flex-row items-center -mb-2">
                   <Checkbox
@@ -2364,11 +2546,11 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               </View>
 
               {/* 9. Remarks */}
-              <View>
-                <Text className="mt-2 mb-4 font-bold underline">9. Remarks</Text>
+              <View className="mt-4 mr-4">
+                <Text className="mt-2 mb-4 font-bold underline">9. Remarks / Catatan / Notes</Text>
                 <View className="flex-row flex-wrap gap-x-4 gap-y-4">
                   <View className="flex-1 mb-4">
-                    <Text className="text-sm text-gray-600">Remarks / Notes (case_remaks)</Text>
+                    <Text className="text-sm text-gray-600">Remarks / Catatan / Notes (case_remaks)</Text>
                     <TextInput
                       value={formData.case_remaks || selectedTicket?.additional_info?.case_remaks}
                       onChangeText={(text) => handleInputChangeTicketExtras("case_remaks", text)}
@@ -2384,7 +2566,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               {/* Submit Button */}
               <TouchableOpacity
                 onPress={handleSubmitTicketExtras}
-                className={`items-center px-8 py-4 mt-6 mb-4 rounded-full ${isSubmittingTicketExtras ? "bg-gray-300" : isConnected ? "bg-blue-500" : "bg-amber-500"}`}
+                className={`items-center px-8 py-4 mt-6 mb-6 rounded-full ${isSubmittingTicketExtras ? "bg-gray-300" : isConnected ? "bg-blue-500" : "bg-amber-500"}`}
                 activeOpacity={0.7}
                 disabled={isSubmittingTicketExtras}
               >
@@ -2739,7 +2921,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
               handleError('Gagal mengambil lokasi selesai, gunakan default 0,0');
             }
             if (selectedTicket?.ticket_id) {
-              await stopTicketNew(selectedTicket?.ticket_id, ended_location, ended_at);
+              await stopTicketNew(userData?.username || '', selectedTicket?.ticket_id, ended_location, ended_at);
               handleLog(`Ticket stopped (noRadar) for ticket: ${selectedTicket?.ticket_id}`);
             }
             setFormData(prevData => ({
