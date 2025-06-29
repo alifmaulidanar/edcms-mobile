@@ -30,7 +30,7 @@ const getTickets = async (user_id: string): Promise<Ticket[]> => {
 // Get a tickets by ticket ID from backend API
 export const getSingleTicket = async (ticket_id: string) => {
   try {
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/ticket/photo/${ticket_id}`, {
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL_V2}/tickets/mobile/photo/${ticket_id}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

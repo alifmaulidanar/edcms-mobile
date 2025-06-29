@@ -552,7 +552,6 @@ const TicketsScreen = () => {
     }
     setIsLoadingPhotos(true);
     const data = await getSingleTicket(ticketId);
-    console.log({ data });
     setPhotos(data.photos);
     setIsLoadingPhotos(false);
     return data;
@@ -920,25 +919,22 @@ const TicketsScreen = () => {
                     ) : (
                       <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={true} nestedScrollEnabled={true}>
                         <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-                          {photos
-                            .sort((a, b) => {
-                              // const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
-                              // const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
-                              // return indexA - indexB;
-                              // If both have queue_order, sort ascending
-                              if (a.queue_order != null && b.queue_order != null) {
-                                return a.queue_order - b.queue_order;
-                              }
-                              // If both don't have queue_order, sort by filename
-                              if (a.queue_order == null && b.queue_order == null) {
-                                const indexA = parseInt(a.url.split('-').pop().split('.')[0], 10);
-                                const indexB = parseInt(b.url.split('-').pop().split('.')[0], 10);
-                                return indexA - indexB;
-                              }
-                              // If only one has queue_order, sort by queue_order
-                              return a.queue_order == null ? 1 : -1;
-                            })
-                            .map((photo, index) => (
+                          {(() => {
+                            const sortedPhotos = photos
+                              .slice()
+                              .sort((a, b) => {
+                                // Sort by numeric value of queue_order if exists, fallback to filename
+                                const getOrder = (photo: any) => {
+                                  if (photo.queue_order != null && !isNaN(Number(photo.queue_order))) {
+                                    return Number(photo.queue_order);
+                                  }
+                                  // fallback: try to extract number from filename
+                                  const match = photo.url.match(/(\d+)(?=\.\w+$)/);
+                                  return match ? Number(match[1]) : 9999;
+                                };
+                                return getOrder(a) - getOrder(b);
+                              });
+                            return sortedPhotos.map((photo, index) => (
                               <TouchableOpacity
                                 key={index}
                                 onPress={() => setPreviewPhoto(photo.url)}
@@ -973,7 +969,8 @@ const TicketsScreen = () => {
                                   </Text>
                                 </View>
                               </TouchableOpacity>
-                            ))}
+                            ));
+                          })()}
                         </View>
                       </ScrollView>
                     )}

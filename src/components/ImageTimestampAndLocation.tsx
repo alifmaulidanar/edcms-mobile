@@ -237,9 +237,9 @@ export const addTimestampToPhoto = async (photoUri: string, fileName: string, ti
       const rectLeft = 0; // full width
       const rectRight = imgWidth; // full width
 
-      // Draw darker semi-transparent black rectangle as backdrop (0.6 opacity)
+      // Draw darker semi-transparent black rectangle as backdrop (0.55 opacity)
       const rectPaint = Skia.Paint();
-      rectPaint.setColor(Skia.Color('rgba(0,0,0,0.6)'));
+      rectPaint.setColor(Skia.Color('rgba(0,0,0,0.55)'));
       rectPaint.setStyle(PaintStyle.Fill);
       const rect = { x: rectLeft, y: rectTop, width: rectRight - rectLeft, height: rectBottom - rectTop };
       canvas.drawRect(rect, rectPaint);
