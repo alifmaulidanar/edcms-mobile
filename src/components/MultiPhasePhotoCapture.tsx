@@ -20,7 +20,7 @@ interface MultiPhasePhotoCaptureProps {
   isConnected: boolean;
   timestamp: string;
   currentLocation?: any;
-  ticketType: 'pullout' | 'single' | 'sharing' | 'default';
+  ticketType: "pullout" | "pm" | "sharing" | "single" | "default";
 }
 
 const MultiPhasePhotoCapture: React.FC<MultiPhasePhotoCaptureProps> = ({

@@ -38,17 +38,20 @@ const openInGoogleMaps = (coordinates: [number, number]) => {
   Linking.openURL(url).catch((err) => handleError(`Error opening Google Maps: ${err}`));
 };
 
-const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
+const getTicketType = (ticket: Ticket | null): "pullout" | "pm" | "sharing" | "single" | "default" => {
   if (!ticket || !ticket?.additional_info) return "default";
   const tipeTiket = (ticket?.additional_info?.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
   const edcService = (ticket?.additional_info?.edc_service || "").toString().toLowerCase();
   if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
     return "pullout";
   }
-  if (edcService.includes("sharing")) {
+  if (tipeTiket.includes("pm") || tipeTiket.includes("pm")) {
+    return "pm";
+  }
+  if ((tipeTiket.includes("cm") || tipeTiket.includes("replacement") || tipeTiket.includes("installation")) && edcService.includes("sharing")) {
     return "sharing";
   }
-  if (edcService.includes("single")) {
+  if ((tipeTiket.includes("cm") || tipeTiket.includes("replacement") || tipeTiket.includes("installation")) && edcService.includes("single")) {
     return "single";
   }
   return "default";

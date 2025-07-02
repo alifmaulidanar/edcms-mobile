@@ -1005,18 +1005,20 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     return lookup;
   }, [geofence]);
 
-  const getTicketType = (ticket: Ticket | null): "pullout" | "sharing" | "single" | "default" => {
+  const getTicketType = (ticket: Ticket | null): "pullout" | "pm" | "sharing" | "single" | "default" => {
     if (!ticket || !ticket?.additional_info) return "default";
     const tipeTiket = (ticket?.additional_info?.tipe_tiket || "").toString().toLowerCase().replace(/\s+/g, "");
     const edcService = (ticket?.additional_info?.edc_service || "").toString().toLowerCase();
-
     if (tipeTiket.includes("pullout") || tipeTiket.includes("pullout")) {
       return "pullout";
     }
-    if (edcService.includes("sharing")) {
+    if (tipeTiket.includes("pm") || tipeTiket.includes("pm")) {
+      return "pm";
+    }
+    if ((tipeTiket.includes("cm") || tipeTiket.includes("replacement") || tipeTiket.includes("installation")) && edcService.includes("sharing")) {
       return "sharing";
     }
-    if (edcService.includes("single")) {
+    if ((tipeTiket.includes("cm") || tipeTiket.includes("replacement") || tipeTiket.includes("installation")) && edcService.includes("single")) {
       return "single";
     }
     return "default";
@@ -2635,9 +2637,33 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
             )}
             {selectedTicket && (
               <View className="z-10 gap-y-2">
-                <Text className="text-center text-gray-600">
-                  <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id ?? '-'}
-                </Text>
+                <View className="flex-row items-center justify-center gap-x-2">
+                  <Text className="text-center text-gray-600">
+                    <Text className="font-bold">ID Tiket:</Text> {selectedTicket?.ticket_id ?? '-'}
+                  </Text>
+                  <View
+                    style={{
+                      backgroundColor: "#f59e42",
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 4,
+                      alignSelf: "center",
+                    }}
+                  >
+                    <Text style={{ color: "white", fontWeight: "bold", fontSize: 14 }}>
+                      Foto:{" "}
+                      {ticketType === "pullout"
+                        ? 4
+                        : ticketType === "pm"
+                          ? 21
+                          : ticketType === "single"
+                            ? 8
+                            : ticketType === "sharing"
+                              ? 19
+                              : "-"}
+                    </Text>
+                  </View>
+                </View>
                 <Text className="text-center text-gray-600">
                   <Text className="font-bold">Deskripsi:</Text> {selectedTicket?.description ?? '-'}
                 </Text>
