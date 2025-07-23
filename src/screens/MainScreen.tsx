@@ -654,7 +654,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     started_on: "",
     vendor_code: "MDM",
     task: "",
-    thermal_supply: 0,
+    thermal_supply: "",
 
     // EDC DEVICE INFO
     com_line: "",
@@ -749,9 +749,13 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
     let processedValue = value;
 
     // Handle numeric fields
-    const numericFields = ['thermal_supply', 'thermal_stock', 'edc_count'];
+    const numericFields = ['thermal_stock', 'edc_count'];
     if (numericFields.includes(field)) {
       processedValue = value === "" ? 0 : Number(value);
+    }
+
+    if (field === 'thermal_supply') {
+      processedValue = value;
     }
 
     // Handle boolean fields
@@ -767,6 +771,23 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleSubmitTicketExtras = async () => {
+    if (!formData.thermal_supply || formData.thermal_supply.toString().trim() === "") {
+      Alert.alert(
+        "Thermal Supply Belum Diisi",
+        "Harap isi jumlah Thermal Supply (roll) sebelum menyimpan berita acara."
+      );
+      return;
+    }
+
+    const remarksValue = formData.case_remaks || selectedTicket?.additional_info?.case_remaks || "";
+    if (!remarksValue || remarksValue.trim() === "") {
+      Alert.alert(
+        "Remarks/Catatan Belum Diisi",
+        "Harap isi Remarks/Catatan/Notes pekerjaan sebelum menyimpan berita acara."
+      );
+      return;
+    }
+
     setIsSubmittingTicketExtras(true);
     try {
       // Convert date strings from dd-mm-yyyy to ISO format with Jakarta timezone (GMT+7)
@@ -782,6 +803,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
 
       const processedData = {
         ...formData,
+        thermal_supply: Number(formData.thermal_supply),
         merchant_location: formData.merchant_location ? formData.merchant_location.split(", ").map(Number) : [],
         started_on: selectedTicket?.updated_at ? new Date(selectedTicket.updated_at).toISOString() : new Date().toISOString(),
         merchant_tutup_sementara_date: formData.merchant_tutup_sementara && formData.merchant_tutup_sementara_date ?
@@ -871,7 +893,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
         started_on: "",
         vendor_code: "MDM",
         task: "",
-        thermal_supply: 0,
+        thermal_supply: "",
 
         // EDC DEVICE INFO
         com_line: "",
@@ -1472,8 +1494,9 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                   </View>
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Thermal Supply (roll)</Text>
+                    <Text className="text-xs text-orange-600">Wajib diisi</Text>
                     <TextInput
-                      value={formData.thermal_supply.toString()}
+                      value={formData.thermal_supply}
                       onChangeText={(text) => handleInputChangeTicketExtras("thermal_supply", text)}
                       // placeholder="Thermal Supply"
                       className="p-2 mt-2 border border-gray-300 rounded-md"
@@ -2553,6 +2576,7 @@ const MainScreen: React.FC<Props> = ({ navigation }) => {
                 <View className="flex-row flex-wrap gap-x-4 gap-y-4">
                   <View className="flex-1 mb-4">
                     <Text className="text-sm text-gray-600">Remarks / Catatan / Notes (case_remaks)</Text>
+                    <Text className="mb-2 text-xs text-orange-600">Wajib diisi. Jika tidak ada, isi dengan &quot;-&quot;</Text>
                     <TextInput
                       value={formData.case_remaks || selectedTicket?.additional_info?.case_remaks}
                       onChangeText={(text) => handleInputChangeTicketExtras("case_remaks", text)}
