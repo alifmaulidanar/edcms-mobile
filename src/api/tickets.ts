@@ -120,27 +120,51 @@ export const updateTicketExtras = async (ticket_id: string, extrasData: any): Pr
 }
 
 /**
- * Optimized function to fetch assigned tickets with related geofence data in a single query
- * This significantly reduces data transfer and processing by only retrieving what's needed
+ * Optimized function to fetch tickets with related geofence data in a single query
+ * Now supports filtering by month and year (for strict monthly filter)
  * @param userId The ID of the user whose tickets to fetch
  * @param status Optional filter for ticket status (defaults to 'assigned')
+ * @param month Optional month (1-12)
+ * @param year Optional year (e.g. 2025)
  * @returns Array of Ticket objects with embedded geofence data
  */
 export const getTicketsWithGeofences = async (
   userId: string,
-  status: string = 'assigned'
+  status: string = 'assigned',
+  month?: number,
+  year?: number
 ): Promise<any[]> => {
   try {
+    let startDate: Date | undefined = undefined;
+    let endDate: Date | undefined = undefined;
+    if (month && year) {
+      // startDate = new Date(year, month - 1, 1, 0, 0, 0, 0);
+      // endDate = new Date(year, month, 0, 23, 59, 59, 999); // last day of month
+      startDate = new Date(year, month - 2, 28);
+      endDate = new Date(year, month, 5, 23, 59, 59, 999);
+    }
+
     // Use a direct Supabase join query to get tickets and their geofences in one go
-    const { data, error } = await supabase
+    let query = supabase
       .from('tickets')
       .select(`
         *,
-        geofence:geofences!geofence_id(*)
+        geofence:geofences!geofence_id(*),
+        ticket_extras:ticket_extras!ticket_extras_ticket_id_fkey(updated_at)
       `)
       .eq('user_id', userId)
       .eq('status', status);
 
+    // Filter by month/year if provided
+    if (startDate && endDate) {
+      query = query.gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
+        .lte('updated_at', endDate.toISOString())
+        // .like('additional_info->>target', `%/${month?.toString().padStart(2, '0')}/${year}`)
+        .order('updated_at', { ascending: false });
+    }
+
+    const { data, error } = await query;
     if (error) {
       handleError(`Error fetching tickets with geofences: ${error.message}`);
       throw new Error(error.message);

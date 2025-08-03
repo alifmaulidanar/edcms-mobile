@@ -1,3 +1,4 @@
+import moment from "moment";
 import { RootState } from "../store";
 import { useSelector } from "react-redux";
 import { Geofence, Ticket } from "../types";
@@ -59,12 +60,12 @@ const getTicketType = (ticket: Ticket | null): "pullout" | "pm" | "sharing" | "s
 
 const TicketsScreen = () => {
   const navigation = useNavigation();
+  const userData = useSelector((state: RootState) => state.user);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [geofence, setGeofence] = useState<Geofence[]>([]);
   const [geofenceLookup, setGeofenceLookup] = useState<Record<string, Geofence>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const userData = useSelector((state: RootState) => state.user);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [photos, setPhotos] = useState<any[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
@@ -80,6 +81,7 @@ const TicketsScreen = () => {
   const [showAdditionalInfo, setShowAdditionalInfo] = useState<boolean>(false);
   const [isProgressModalVisible, setIsProgressModalVisible] = useState(false);
   const [syncResultSummary, setSyncResultSummary] = useState<any>(null);
+  const [showFilterBar, setShowFilterBar] = useState(false);
   const [routes] = useState([
     { key: "active", title: "Aktif" },
     { key: "on_progress", title: "Berjalan" },
@@ -97,6 +99,11 @@ const TicketsScreen = () => {
   });
   // const [accordionOpen, setAccordionOpen] = useState<string | null>(null);
   // const [syncProgress, setSyncProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+
+  const now = moment();
+  const [selectedMonth, setSelectedMonth] = useState(now.month() + 1); // 1-12
+  const [selectedYear, setSelectedYear] = useState(now.year());
+  const yearsArray = Array.from({ length: 1 }, (_, i) => now.year() - i);
 
   // Fungsi untuk memilih dan membatalkan pilihan tiket
   const selectTicket = async (ticket: Ticket) => {
@@ -124,16 +131,14 @@ const TicketsScreen = () => {
 
   // NEW optimized function that fetches tickets WITH their geofence data in one query
   const fetchTicketsWithGeofences = useCallback(async () => {
+    setIsRefreshing(true);
     try {
       if (!userData?.user_id) {
         handleError("User data is missing");
         return;
       }
-      setIsRefreshing(true);
 
-      // Fetch all ticket statuses at once to avoid multiple API calls, but with a short delay between them
-      // to prevent overwhelming the device
-      const assignedData = await getTicketsWithGeofences(userData.user_id, 'assigned');
+      const assignedData = await getTicketsWithGeofences(userData.user_id, 'assigned', selectedMonth, selectedYear);
       // Process assigned tickets first for better perceived performance (active tab is shown first)
       const processedTickets: Ticket[] = [];
       const geofences: Geofence[] = [];
@@ -159,7 +164,7 @@ const TicketsScreen = () => {
       // Then fetch the rest of the data in sequence to prevent overwhelming the device
       const otherStatuses = ['on_progress', 'completed', 'canceled'];
       for (const status of otherStatuses) {
-        const batchData = await getTicketsWithGeofences(userData.user_id, status);
+        const batchData = await getTicketsWithGeofences(userData.user_id, status, selectedMonth, selectedYear);
         batchData.forEach(item => {
           const { geofence_data, ...ticketData } = item;
           processedTickets.push(ticketData as Ticket);
@@ -182,7 +187,7 @@ const TicketsScreen = () => {
       handleLog(`Error in optimized fetch: ${error.message}`);
       setIsRefreshing(false);
     }
-  }, [userData]);
+  }, [userData, selectedMonth, selectedYear]);
 
   useEffect(() => {
     initTicketPhotoTable();
@@ -354,57 +359,116 @@ const TicketsScreen = () => {
             margin: 8,
           }}
         />
-        {/* Sort and Filter Controls - Compact Layout */}
-        <View className="flex-row items-center justify-between py-2 mx-2 mb-2 bg-white rounded-lg">
-          <View className="flex-1 mx-0.5 gap-y-1">
-            <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Urutkan</Text>
-            <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
-              <Picker
-                selectedValue={sortKey}
-                onValueChange={(value) => setSortKey(value)}
-                className="bg-white rounded-lg"
-                itemStyle={{ fontSize: 12, height: 120 }}
-              >
-                <Picker.Item label="Tgl Dibuat" value="created_at" />
-                <Picker.Item label="Tgl Selesai" value="updated_at" />
-                <Picker.Item label="Deskripsi" value="description" />
-              </Picker>
-            </View>
-          </View>
-          <View className="flex-1 mx-0.5 gap-y-1">
-            <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Urutan</Text>
-            <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
-              <Picker
-                selectedValue={sortOrder}
-                onValueChange={(value) => setSortOrder(value)}
-                className="bg-white rounded-lg"
-                itemStyle={{ fontSize: 12, height: 120 }}
-              >
-                <Picker.Item label="Menurun" value="desc" />
-                <Picker.Item label="Menaik" value="asc" />
-              </Picker>
-            </View>
-          </View>
-          <View className="flex-1 mx-0.5 gap-y-1">
-            <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Kategori Tiket</Text>
-            <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
-              <Picker
-                selectedValue={ticketTypeFilter}
-                onValueChange={(value) => setTicketTypeFilter(value)}
-                className="bg-white rounded-lg"
-                itemStyle={{ fontSize: 12, height: 120 }}
-              >
-                <Picker.Item label="Semua" value="all" />
-                <Picker.Item label="CM Visit / VTI" value="CM Visit" />
-                <Picker.Item label="Installation" value="Installation" />
-                <Picker.Item label="Preventive Maintenance / PM" value="PM" />
-                <Picker.Item label="Pull Out" value="Pull Out" />
-                <Picker.Item label="Replacement" value="Replacement" />
-              </Picker>
-            </View>
-          </View>
-        </View>
 
+        {/* Tombol Filter Tiket */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#3B82F6',
+            borderRadius: 8,
+            marginHorizontal: 12,
+            marginBottom: 8,
+            paddingVertical: 10,
+          }}
+          onPress={() => setShowFilterBar((prev) => !prev)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="filter" size={18} color="white" style={{ marginRight: 8 }} />
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
+            {showFilterBar ? 'Sembunyikan Filter' : 'Filter Tiket'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Filter Bar (Show/Hide) */}
+        {showFilterBar && (
+          <>
+            {/* Sort and Filter Controls - Compact Layout */}
+            <View className="flex-row items-center justify-between py-2 mx-2 mb-2 bg-white rounded-lg">
+              <View className="flex-1 mx-0.5 gap-y-1">
+                <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Urutkan berdasarkan:</Text>
+                <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
+                  <Picker
+                    selectedValue={sortKey}
+                    onValueChange={(value) => setSortKey(value)}
+                    className="bg-white rounded-lg"
+                    itemStyle={{ fontSize: 12, height: 120 }}
+                  >
+                    <Picker.Item label="Tgl Dibuat" value="created_at" />
+                    <Picker.Item label="Tgl Selesai" value="updated_at" />
+                    <Picker.Item label="Deskripsi" value="description" />
+                  </Picker>
+                </View>
+              </View>
+              <View className="flex-1 mx-0.5 gap-y-1">
+                <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Urutan tiket:</Text>
+                <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
+                  <Picker
+                    selectedValue={sortOrder}
+                    onValueChange={(value) => setSortOrder(value)}
+                    className="bg-white rounded-lg"
+                    itemStyle={{ fontSize: 12, height: 120 }}
+                  >
+                    <Picker.Item label="Menurun" value="desc" />
+                    <Picker.Item label="Menaik" value="asc" />
+                  </Picker>
+                </View>
+              </View>
+            </View>
+
+            <View className="flex-row items-center justify-between py-2 mx-2 mb-2 bg-white rounded-lg">
+              <View className="flex-1 mx-0.5 gap-y-1">
+                <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Bulan</Text>
+                <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
+                  <Picker
+                    selectedValue={selectedMonth}
+                    onValueChange={setSelectedMonth}
+                    className="bg-white rounded-lg"
+                    itemStyle={{ fontSize: 12, height: 120 }}
+                  >
+                    {["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"].map((bulan, i) => (
+                      <Picker.Item key={i + 1} label={bulan} value={i + 1} />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+              <View className="flex-1 mx-0.5 gap-y-1">
+                <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Tahun</Text>
+                <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
+                  <Picker
+                    selectedValue={selectedYear}
+                    onValueChange={setSelectedYear}
+                    className="bg-white rounded-lg"
+                    itemStyle={{ fontSize: 12, height: 120 }}
+                  >
+                    {yearsArray.map((year) => (
+                      <Picker.Item key={year} label={year.toString()} value={year} />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+              <View className="flex-1 mx-0.5 gap-y-1">
+                <Text className="text-xs font-medium text-gray-500 mb-0.5 ml-1">Kategori Tiket</Text>
+                <View className="justify-center h-10 bg-white border border-gray-300 rounded-lg">
+                  <Picker
+                    selectedValue={ticketTypeFilter}
+                    onValueChange={(value) => setTicketTypeFilter(value)}
+                    className="bg-white rounded-lg"
+                    itemStyle={{ fontSize: 12, height: 120 }}
+                  >
+                    <Picker.Item label="Semua" value="all" />
+                    <Picker.Item label="CM Visit / VTI" value="CM Visit" />
+                    <Picker.Item label="Installation" value="Installation" />
+                    <Picker.Item label="Preventive Maintenance / PM" value="PM" />
+                    <Picker.Item label="Pull Out" value="Pull Out" />
+                    <Picker.Item label="Replacement" value="Replacement" />
+                  </Picker>
+                </View>
+              </View>
+            </View>
+          </>
+        )}
         {/* Ticket Count & Validation Status (for completed tickets) */}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginRight: 16, marginBottom: 4 }}>
           <Text style={{ color: "#6B7280", fontSize: 14 }}>
@@ -1369,9 +1433,14 @@ const TicketItem = React.memo(({
           <Text style={{ fontWeight: "500", color: "#4B5563" }}>
             {geofenceDescription}
           </Text>
-          <Text style={{ fontWeight: "500" }}>MID: {ticket.additional_info?.mid || '-'}</Text>
+          {/* <Text style={{ fontWeight: "500" }}>MID: {ticket.additional_info?.mid || '-'}</Text> */}
+          <Text style={{ fontWeight: "500" }}>SN EDC: {ticket.additional_info?.sn_edc || '-'}</Text>
           <Text style={{ fontWeight: "500" }}>TID: {ticket.additional_info?.tid || '-'}</Text>
           <Text style={{ fontWeight: "500" }}>EDC Service: {ticket.additional_info?.edc_service || '-'}</Text>
+          <Text style={{ fontWeight: "500" }}>Note Tiket: {ticket.additional_info?.noted || '-'}</Text>
+          <Text style={{ fontWeight: "500", backgroundColor: "#FEF08A", paddingHorizontal: 4, borderRadius: 4 }}>
+            TARGET: {ticket.additional_info?.target || '-'}
+          </Text>
           <Text style={{ color: "gray" }}>
             Dibuat: {createdAtFormatted}
           </Text>
