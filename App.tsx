@@ -27,7 +27,7 @@ const Routes = {
 };
 
 const linking = {
-  prefixes: ['pastimsedc://'],
+  prefixes: ['edcmsmobile://'],
   config: {
     screens: {
       Login: {

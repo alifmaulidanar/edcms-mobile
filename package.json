@@ -1,5 +1,5 @@
 {
-  "name": "pastims-edc-mobile",
+  "name": "edcms-mobile",
   "version": "1.5.0",
   "main": "index.ts",
   "scripts": {

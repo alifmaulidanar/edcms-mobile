@@ -21,7 +21,7 @@ const PrivacyPolicyScreen: React.FC<Props> = ({ navigation }) => {
         <Text className="text-lg font-semibold text-gray-700">Kebijakan Privasi</Text>
       </View>
       <WebView
-        source={{ uri: "https://policy.pastims.app/privacy-policy-pastims" }}
+        source={{ uri: "https://edcms-privacy-policy.pages.dev/privacy-policy-pastims" }}
         style={{ flex: 1 }}
       />
     </View>

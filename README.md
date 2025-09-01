@@ -1,1 +1,1 @@
-# PastiMS Mobile
+# EDCMS Mobile

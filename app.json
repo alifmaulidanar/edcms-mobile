@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "PastiMS EDC",
-    "slug": "pastims-edc",
+    "name": "EDCMS Mobile",
+    "slug": "edcms-mobile",
     "version": "1.5.0",
     "orientation": "portrait",
-    "icon": "./assets/logo/mdm-logo.png",
+    "icon": "./assets/logo/app-logo-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "scheme": "pastimsedc",
+    "scheme": "edcmsmobile",
     "splash": {
-      "image": "./assets/logo/pastims-newest-logo.png",
+      "image": "./assets/logo/app-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -42,16 +42,16 @@
         "android.permission.WAKE_LOCK"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo/mdm-logo.png",
+        "foregroundImage": "./assets/logo/app-logo-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.app.pastimsedc",
+      "package": "com.app.edcmsmobile",
       "intentFilters": [
         {
           "action": "VIEW",
           "data": [
             {
-              "scheme": "pastimsedc"
+              "scheme": "edcmsmobile"
             }
           ],
           "category": [
@@ -62,7 +62,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/logo/mdm-logo.png",
+      "favicon": "./assets/logo/app-logo-icon.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -78,7 +78,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/logo/mdm-logo.png",
+          "icon": "./assets/logo/app-logo-icon.png",
           "color": "#ffffff",
           "defaultChannel": "default",
           "enableBackgroundRemoteNotifications": false,
