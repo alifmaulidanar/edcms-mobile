@@ -27,7 +27,7 @@ const Routes = {
 };
 
 const linking = {
-  prefixes: ['edcmsmobile://'],
+  prefixes: ['acsimsmobile://'],
   config: {
     screens: {
       Login: {

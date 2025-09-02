@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "EDCMS Mobile",
-    "slug": "edcms-mobile",
+    "name": "ACSI-MS Mobile",
+    "slug": "acsims-mobile",
     "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/logo/app-logo-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "scheme": "edcmsmobile",
+    "scheme": "acsimsmobile",
     "splash": {
       "image": "./assets/logo/app-logo.png",
       "resizeMode": "contain",
@@ -45,13 +45,13 @@
         "foregroundImage": "./assets/logo/app-logo-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.app.edcmsmobile",
+      "package": "com.app.acsimsmobile",
       "intentFilters": [
         {
           "action": "VIEW",
           "data": [
             {
-              "scheme": "edcmsmobile"
+              "scheme": "acsimsmobile"
             }
           ],
           "category": [

@@ -89,18 +89,18 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const appVersion = Constants.expoConfig?.version;
 
   return (
-    <View className="flex-1 bg-[#f5f5f5] mt-4 px-6 py-6 justify-between">
+    <View className="flex-1 bg-[#ffffff] mt-4 px-6 py-6 justify-between">
       {/* Logo Perusahaan (Posisi di atas, tengah) */}
-      <View className="items-center">
+      {/* <View className="items-center">
         <Image
           source={require("../../assets/logo/mdm-logo.png")}
           style={{ width: 50, height: 50 }}
           resizeMode="contain"
         />
-      </View>
+      </View> */}
 
       {/* Logo Produk (Di antara logo perusahaan dan form login) */}
-      <View className="items-center justify-center">
+      <View className="items-center justify-center mt-20">
         <Image
           source={require("../../assets/logo/app-logo.png")}
           style={{ width: "100%", height: 120 }}
@@ -109,7 +109,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Form Login (Tengah layar secara vertikal) */}
-      <View className="justify-start w-full max-w-md p-8 bg-white rounded-lg shadow-lg">
+      <View className="justify-start w-full max-w-md p-8 bg-white rounded-lg shadow-xl shadow-slate-800">
         <Text className="text-center mb-5 text-2xl font-bold text-[#84439b]">Login</Text>
         {/* Input fields */}
         <TextInput
